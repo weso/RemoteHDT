@@ -8,3 +8,14 @@ This project could be divided into two main crates:
 
 1. RemoteHDT --> The HDT fork using ZARR
 2. rdf-rs --> utilities for importing RDF dumps using Rust
+
+---
+
+.
+├── \*.zarr # Resulting Zarr project
+├── rdf-rs # Crate for importing the RDF dumps into the system
+├── examples
+├── src
+│ ├── zarr # All the Zarr utilities
+│ └── main.rs # Main application for creating the Zarr project
+└── ...

@@ -7,6 +7,8 @@ use zarr3::prelude::{create_root_group, ArrayMetadataBuilder, ArrayRegion, Group
 use zarr3::store::filesystem::FileSystemStore;
 use zarr3::ArcArrayD;
 
+pub mod zarr;
+
 fn main() -> Result<(), String> {
     // 1. First, we open the File System for us to store the ZARR project
     let path = match PathBuf::from_str("root.zarr") {
