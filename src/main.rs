@@ -3,7 +3,6 @@ use rdf_rs::{Backend, Triple};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::str::FromStr;
-use zarr3::codecs::bb::gzip_codec::GzipCodec;
 use zarr3::prelude::smallvec::smallvec;
 use zarr3::prelude::{create_root_group, ArrayMetadataBuilder, ArrayRegion, GroupMetadata};
 use zarr3::store::filesystem::FileSystemStore;
@@ -50,16 +49,21 @@ fn main() -> Result<(), String> {
     });
 
     // 4. Build the structure of the Array; as such, several parameters of it are
-    // tweaked. Namely, the size of the array, the size of the chunks and the
-    // default values
+    // tweaked. Namely, the size of the array, the size of the chunks, the name
+    // of the different dimensions and the default values
     // TODO: the shape should be dynamically set in accordance to the dimensions of the SPO triples
     // TODO: the size of the chunks should be dynamically set in accordance to the Shape
-    let arr_meta = ArrayMetadataBuilder::<i32>::new(&[
+    let arr_meta = ArrayMetadataBuilder::<u8>::new(&[
         subjects.len() as u64,
-        objects.len() as u64,
         predicates.len() as u64,
+        objects.len() as u64,
     ])
-    .push_bb_codec(GzipCodec::default())
+    .dimension_names(smallvec![
+        Some("Subjects".to_string()),
+        Some("Predicates".to_string()),
+        Some("Objects".to_string())
+    ])
+    .unwrap()
     .build();
 
     // 5. Create the Array provided the name of it
@@ -69,7 +73,7 @@ fn main() -> Result<(), String> {
         Err(_) => return Err(String::from("Error parsing the NodeName")),
     };
 
-    let arr = match root_group.create_array::<i32>(node_name, arr_meta) {
+    let arr = match root_group.create_array::<u8>(node_name, arr_meta) {
         Ok(array) => array,
         Err(_) => return Err(String::from("Error creating the Array")),
     };
@@ -80,8 +84,8 @@ fn main() -> Result<(), String> {
     // that is, we can insert the created array with and X and Y shift. Lastly,
     // the region is written provided the aforementioned data and offset
     let data =
-        match ArcArrayD::from_shape_vec(vec![subjects.len(), objects.len(), predicates.len()], {
-            let mut v = Vec::<i32>::new();
+        match ArcArrayD::from_shape_vec(vec![subjects.len(), predicates.len(), objects.len()], {
+            let mut v = Vec::<u8>::new();
             for subject in &subjects {
                 for predicate in &predicates {
                     for object in &objects {
@@ -111,6 +115,25 @@ fn main() -> Result<(), String> {
 
     // =========================================================================
 
+    println!("== Subjects =====================================================");
+    subjects
+        .iter()
+        .enumerate()
+        .for_each(|(e, i)| println!("{} --> {}", e, i));
+
+    println!("== Predicates ===================================================");
+    predicates
+        .iter()
+        .enumerate()
+        .for_each(|(e, i)| println!("{} --> {}", e, i));
+
+    println!("== Objects ======================================================");
+    objects
+        .iter()
+        .enumerate()
+        .for_each(|(e, i)| println!("{} --> {}", e, i));
+
+    println!("== Array ========================================================");
     Ok(println!(
         "{:?}",
         arr.read_region(ArrayRegion::from_offset_shape(
@@ -121,5 +144,7 @@ fn main() -> Result<(), String> {
                 objects.len() as u64
             ]
         ))
+        .unwrap()
+        .unwrap()
     ))
 }

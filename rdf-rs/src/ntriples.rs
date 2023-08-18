@@ -24,7 +24,7 @@ impl Backend for NTriples {
             {
                 triples.push(crate::Triple {
                     subject: triple.subject.to_string(),
-                    predicate: triple.object.to_string(),
+                    predicate: triple.predicate.to_string(),
                     object: triple.object.to_string(),
                 })
             };
