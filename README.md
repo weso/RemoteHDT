@@ -19,3 +19,14 @@ This project could be divided into two main crates:
     │ ├── zarr # All the Zarr utilities
     │ └── main.rs # Main application for creating the Zarr project
     └── ...
+
+---
+
+X axis --> subjects
+Y axis --> predicates
+Z axis --> objects
+
+!Caveat Unique values should be stored in each of the axis
+
+For each triple, a 1 will be set to each (X, Y, Z) such that (X, Y, Z) = (s, p, o).
+-1 otherwise.
