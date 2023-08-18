@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 pub mod ntriples;
 
 // This is useful because we want to store framework independent Triples; that is,
@@ -18,4 +20,20 @@ pub struct RDF {
 
 pub trait Backend {
     fn load(path: &str) -> Result<RDF, String>;
+}
+
+impl RDF {
+    pub fn extract(&self) -> (HashSet<String>, HashSet<String>, HashSet<String>) {
+        let mut subjects = HashSet::<String>::new();
+        let mut predicates = HashSet::<String>::new();
+        let mut objects = HashSet::<String>::new();
+
+        self.triples.iter().for_each(|triple| {
+            subjects.insert(triple.subject.to_string());
+            predicates.insert(triple.predicate.to_string());
+            objects.insert(triple.object.to_string());
+        });
+
+        (subjects, predicates, objects)
+    }
 }
