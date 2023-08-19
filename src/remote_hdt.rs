@@ -68,15 +68,15 @@ impl<'a> RemoteHDT<'a> {
 
         // 3. Import the RDF dump using `rdf-rs`
         let dump: RDF = match self.rdf_path.split('.').last() {
-            Some("nt") => match NTriples::new().load(self.rdf_path) {
+            Some("nt") => match NTriples::default().load(self.rdf_path) {
                 Ok(dump) => dump,
                 Err(_) => return Err(String::from("Error loading the NTriples dump")),
             },
-            Some("ttl") => match Turtle::new().load(self.rdf_path) {
+            Some("ttl") => match Turtle::default().load(self.rdf_path) {
                 Ok(dump) => dump,
                 Err(_) => return Err(String::from("Error loading the Turtle dump")),
             },
-            Some("rdf") => match RdfXml::new().load(self.rdf_path) {
+            Some("rdf") => match RdfXml::default().load(self.rdf_path) {
                 Ok(dump) => dump,
                 Err(_) => return Err(String::from("Error loading the RDF/XML dump")),
             },
