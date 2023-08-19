@@ -1,7 +1,7 @@
 use rdf_rs::ntriples::NTriples;
 use rdf_rs::rdf_xml::RdfXml;
 use rdf_rs::turtle::Turtle;
-use rdf_rs::{Backend, Triple, RDF};
+use rdf_rs::{Backend, SimpleTriple, RDF};
 use std::path::PathBuf;
 use std::str::FromStr;
 use zarr3::prelude::smallvec::smallvec;
@@ -68,15 +68,15 @@ impl<'a> RemoteHDT<'a> {
 
         // 3. Import the RDF dump using `rdf-rs`
         let dump: RDF = match self.rdf_path.split('.').last() {
-            Some("nt") => match NTriples::load(self.rdf_path) {
+            Some("nt") => match NTriples::new().load(self.rdf_path) {
                 Ok(dump) => dump,
                 Err(_) => return Err(String::from("Error loading the NTriples dump")),
             },
-            Some("ttl") => match Turtle::load(self.rdf_path) {
+            Some("ttl") => match Turtle::new().load(self.rdf_path) {
                 Ok(dump) => dump,
                 Err(_) => return Err(String::from("Error loading the Turtle dump")),
             },
-            Some("rdf") => match RdfXml::load(self.rdf_path) {
+            Some("rdf") => match RdfXml::new().load(self.rdf_path) {
                 Ok(dump) => dump,
                 Err(_) => return Err(String::from("Error loading the RDF/XML dump")),
             },
@@ -126,7 +126,7 @@ impl<'a> RemoteHDT<'a> {
                 for subject in &subjects {
                     for predicate in &predicates {
                         for object in &objects {
-                            if dump.triples.contains(&Triple {
+                            if dump.triples.contains(&SimpleTriple {
                                 subject: subject.to_string(),
                                 predicate: predicate.to_string(),
                                 object: object.to_string(),
