@@ -1,11 +1,14 @@
+use ntriples::NTriples;
+use rdf_xml::RdfXml;
 use rio_api::model::Triple;
 use rio_api::parser::TriplesParser;
 use std::collections::HashSet;
 use std::{fs::File, io::BufReader};
+use turtle::Turtle;
 
-pub mod ntriples;
-pub mod rdf_xml;
-pub mod turtle;
+mod ntriples;
+mod rdf_xml;
+mod turtle;
 
 // This is useful because we want to store framework independent Triples; that is,
 // the Triple struct won't depend on any other RDF crate, such as `rio`. In case
@@ -23,8 +26,8 @@ pub struct RDF {
     pub triples: Vec<SimpleTriple>,
 }
 
-pub trait Backend<T: TriplesParser, E: From<<T>::Error>> {
-    fn load(&self, path: &str) -> Result<RDF, String> {
+trait Backend<T: TriplesParser, E: From<<T>::Error>> {
+    fn parse(&self, path: &str) -> Result<Vec<SimpleTriple>, String> {
         let mut triples: Vec<SimpleTriple> = Vec::new();
 
         let reader = BufReader::new(match File::open(path) {
@@ -52,13 +55,33 @@ pub trait Backend<T: TriplesParser, E: From<<T>::Error>> {
             }
         }
 
-        Ok(RDF { triples })
+        Ok(triples)
     }
 
     fn concrete_parser(&self, reader: BufReader<File>) -> T;
 }
 
 impl RDF {
+    pub fn new(path: &str) -> Result<Self, String> {
+        let triples = match path.split('.').last() {
+            Some("nt") => match NTriples.parse(path) {
+                Ok(triples) => triples,
+                Err(_) => return Err(String::from("Error loading the NTriples dump")),
+            },
+            Some("ttl") => match Turtle.parse(path) {
+                Ok(triples) => triples,
+                Err(_) => return Err(String::from("Error loading the Turtle dump")),
+            },
+            Some("rdf") => match RdfXml.parse(path) {
+                Ok(triples) => triples,
+                Err(_) => return Err(String::from("Error loading the RDF/XML dump")),
+            },
+            _ => return Err(String::from("Not supported format for loading the dump")),
+        };
+
+        Ok(RDF { triples })
+    }
+
     pub fn extract(&self) -> (HashSet<String>, HashSet<String>, HashSet<String>) {
         let mut subjects = HashSet::<String>::new();
         let mut predicates = HashSet::<String>::new();

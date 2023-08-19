@@ -1,7 +1,4 @@
-use rdf_rs::ntriples::NTriples;
-use rdf_rs::rdf_xml::RdfXml;
-use rdf_rs::turtle::Turtle;
-use rdf_rs::{Backend, SimpleTriple, RDF};
+use rdf_rs::{SimpleTriple, RDF};
 use std::path::PathBuf;
 use std::str::FromStr;
 use zarr3::prelude::smallvec::smallvec;
@@ -67,22 +64,7 @@ impl<'a> RemoteHDT<'a> {
         };
 
         // 3. Import the RDF dump using `rdf-rs`
-        let dump: RDF = match self.rdf_path.split('.').last() {
-            Some("nt") => match NTriples::default().load(self.rdf_path) {
-                Ok(dump) => dump,
-                Err(_) => return Err(String::from("Error loading the NTriples dump")),
-            },
-            Some("ttl") => match Turtle::default().load(self.rdf_path) {
-                Ok(dump) => dump,
-                Err(_) => return Err(String::from("Error loading the Turtle dump")),
-            },
-            Some("rdf") => match RdfXml::default().load(self.rdf_path) {
-                Ok(dump) => dump,
-                Err(_) => return Err(String::from("Error loading the RDF/XML dump")),
-            },
-            _ => return Err(String::from("Not supported format for loading the dump")),
-        };
-
+        let dump = RDF::new(self.rdf_path)?;
         let (subjects, predicates, objects) = dump.extract();
 
         // 4. Build the structure of the Array; as such, several parameters of it are

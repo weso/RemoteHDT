@@ -3,8 +3,7 @@ use std::{fs::File, io::BufReader};
 
 use super::Backend;
 
-#[derive(Default)]
-pub struct Turtle;
+pub(crate) struct Turtle;
 
 impl Backend<TurtleParser<BufReader<File>>, TurtleError> for Turtle {
     fn concrete_parser(&self, reader: BufReader<File>) -> TurtleParser<BufReader<File>> {
