@@ -1,0 +1,17 @@
+PREFIX :        <http://example.org/>
+PREFIX xsd:     <http://www.w3.org/2001/XMLSchema#>
+
+:alan       :instanceOf       :human                  ;
+            :placeOfBirth     :warrington             ;
+            :placeOfDeath     :wilmslow               ;
+            :dateOfBirth      "1912-06-23"^^xsd:date  ;
+            :employer         :GCHQ                   .
+
+:warrington :country          :uk                     .
+
+:wilmslow   :country          :uk                     ;
+            :instanceOf       :town                   .
+
+:bombe      :discoverer       :alan                   ;
+            :instanceOf       :computer               ;
+            :manufacturer     :GCHQ                   .

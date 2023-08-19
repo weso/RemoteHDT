@@ -1,15 +1,15 @@
 use std::{fs::File, io::BufReader};
 
 use rio_api::parser::TriplesParser;
-use rio_turtle::{NTriplesParser, TurtleError};
+use rio_xml::{RdfXmlError, RdfXmlParser};
 
 use crate::RDF;
 
 use super::Backend;
 
-pub struct NTriples;
+pub struct RdfXml;
 
-impl Backend for NTriples {
+impl Backend for RdfXml {
     fn load(path: &str) -> Result<RDF, String> {
         let mut triples: Vec<crate::Triple> = Vec::new();
 
@@ -18,7 +18,7 @@ impl Backend for NTriples {
             Err(_) => return Err(String::from("Cannot open the file")),
         });
 
-        let mut parser = NTriplesParser::new(reader);
+        let mut parser = RdfXmlParser::new(reader, None);
 
         let mut on_triple = |triple: rio_api::model::Triple| {
             {
@@ -29,7 +29,7 @@ impl Backend for NTriples {
                 })
             };
             Ok(())
-        } as Result<(), TurtleError>;
+        } as Result<(), RdfXmlError>;
 
         while !parser.is_end() {
             if parser.parse_step(&mut on_triple).is_err() {

@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 rio_turtle = "0.8.4"
+rio_xml = "0.8.4"
 rio_api = "0.8.4"

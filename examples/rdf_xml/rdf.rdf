@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:ns0="http://example.org/">
+
+  <rdf:Description rdf:about="http://example.org/alan">
+    <ns0:instanceOf rdf:resource="http://example.org/Human"/>
+    <ns0:placeOfBirth>
+      <rdf:Description rdf:about="http://example.org/warrington">
+        <ns0:country rdf:resource="http://example.org/uk"/>
+      </rdf:Description>
+    </ns0:placeOfBirth>
+
+    <ns0:placeOfDeath>
+      <rdf:Description rdf:about="http://example.org/wilmslow">
+        <ns0:country rdf:resource="http://example.org/uk"/>
+        <ns0:instanceOf rdf:resource="http://example.org/town"/>
+      </rdf:Description>
+    </ns0:placeOfDeath>
+
+    <ns0:dateOfBirth rdf:datatype="http://www.w3.org/2001/XMLSchemadate">1912-06-23</ns0:dateOfBirth>
+    <ns0:employer rdf:resource="http://example.org/GCHQ"/>
+  </rdf:Description>
+
+  <rdf:Description rdf:about="http://example.org/bombe">
+    <ns0:discoverer rdf:resource="http://example.org/alan"/>
+    <ns0:instanceOf rdf:resource="http://example.org/computer"/>
+    <ns0:manufacturer rdf:resource="http://example.org/GCHQ"/>
+  </rdf:Description>
+
+</rdf:RDF>

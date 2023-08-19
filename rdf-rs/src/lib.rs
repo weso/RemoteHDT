@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
 pub mod ntriples;
+pub mod rdf_xml;
+pub mod turtle;
 
 // This is useful because we want to store framework independent Triples; that is,
 // the Triple struct won't depend on any other RDF crate, such as `rio`. In case
