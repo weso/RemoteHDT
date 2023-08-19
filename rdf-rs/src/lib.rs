@@ -22,7 +22,7 @@ pub struct SimpleTriple {
     pub object: String,
 }
 
-pub struct RDF {
+pub struct RdfParser {
     pub triples: Vec<SimpleTriple>,
 }
 
@@ -61,7 +61,7 @@ trait Backend<T: TriplesParser, E: From<<T>::Error>> {
     fn concrete_parser(&self, reader: BufReader<File>) -> T;
 }
 
-impl RDF {
+impl RdfParser {
     pub fn new(path: &str) -> Result<Self, String> {
         let triples = match path.split('.').last() {
             Some("nt") => match NTriples.parse(path) {
@@ -79,7 +79,7 @@ impl RDF {
             _ => return Err(String::from("Not supported format for loading the dump")),
         };
 
-        Ok(RDF { triples })
+        Ok(RdfParser { triples })
     }
 
     pub fn extract(&self) -> (HashSet<String>, HashSet<String>, HashSet<String>) {

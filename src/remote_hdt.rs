@@ -1,4 +1,4 @@
-use rdf_rs::{SimpleTriple, RDF};
+use rdf_rs::{RdfParser, SimpleTriple};
 use std::path::PathBuf;
 use std::str::FromStr;
 use zarr3::prelude::smallvec::smallvec;
@@ -64,7 +64,7 @@ impl<'a> RemoteHDT<'a> {
         };
 
         // 3. Import the RDF dump using `rdf-rs`
-        let dump = RDF::new(self.rdf_path)?;
+        let dump = RdfParser::new(self.rdf_path)?;
         let (subjects, predicates, objects) = dump.extract();
 
         // 4. Build the structure of the Array; as such, several parameters of it are
