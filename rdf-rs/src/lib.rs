@@ -1,29 +1,29 @@
 use ntriples::NTriples;
 use rdf_xml::RdfXml;
-use sophia::{
-    parser::TripleParser,
-    serializer::TripleSerializer,
-    term::{BoxTerm, Term},
-    triple::stream::TripleSource,
-};
-use std::{
-    collections::HashSet,
-    fs::File,
-    io::{BufReader, BufWriter},
-};
+use sophia::parser::TripleParser;
+use sophia::serializer::TripleSerializer;
+use sophia::term::BoxTerm;
+use sophia::triple::stream::TripleSource;
+use std::collections::HashSet;
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
 use turtle::Turtle;
 
 mod ntriples;
 mod rdf_xml;
 mod turtle;
 
+pub type Graph = Vec<[BoxTerm; 3]>;
+
 pub struct RdfParser {
-    pub graph: Vec<[BoxTerm; 3]>,
+    pub graph: Graph,
 }
 
+pub struct RdfSerializer;
+
 trait Backend<P: TripleParser<BufReader<File>>, F: TripleSerializer> {
-    fn parse(&self, path: &str) -> Result<Vec<[BoxTerm; 3]>, String> {
-        let mut graph: Vec<[BoxTerm; 3]> = vec![];
+    fn parse(&self, path: &str) -> Result<Graph, String> {
+        let mut graph: Graph = vec![];
 
         let reader = BufReader::new(match File::open(path) {
             Ok(file) => file,
@@ -40,7 +40,7 @@ trait Backend<P: TripleParser<BufReader<File>>, F: TripleSerializer> {
         }
     }
 
-    fn format(&self, path: &str, graph: Vec<[BoxTerm; 3]>) -> Result<(), String> {
+    fn format(&self, path: &str, graph: Graph) -> Result<(), String> {
         let file = File::create(path).unwrap();
         let writer = BufWriter::new(file);
         let mut formatter = self.concrete_formatter(writer);
@@ -75,16 +75,10 @@ impl RdfParser {
         })
     }
 
-    pub fn extract(
-        &self,
-    ) -> (
-        HashSet<Term<Box<str>>>,
-        HashSet<Term<Box<str>>>,
-        HashSet<Term<Box<str>>>,
-    ) {
-        let mut subjects = HashSet::<Term<Box<str>>>::new();
-        let mut predicates = HashSet::<Term<Box<str>>>::new();
-        let mut objects = HashSet::<Term<Box<str>>>::new();
+    pub fn extract(&self) -> (HashSet<BoxTerm>, HashSet<BoxTerm>, HashSet<BoxTerm>) {
+        let mut subjects = HashSet::<BoxTerm>::new();
+        let mut predicates = HashSet::<BoxTerm>::new();
+        let mut objects = HashSet::<BoxTerm>::new();
 
         self.graph.iter().for_each(|triple| {
             subjects.insert(triple[0].to_owned());
@@ -93,5 +87,16 @@ impl RdfParser {
         });
 
         (subjects, predicates, objects)
+    }
+}
+
+impl RdfSerializer {
+    pub fn serialize(path: &str, graph: Graph) -> Result<(), String> {
+        match path.split('.').last() {
+            Some("nt") => NTriples.format(path, graph),
+            Some("ttl") => Turtle.format(path, graph),
+            Some("rdf") => RdfXml.format(path, graph),
+            _ => return Err(String::from("Not supported format for loading the dump")),
+        }
     }
 }

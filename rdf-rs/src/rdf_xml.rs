@@ -1,5 +1,7 @@
-use sophia::{parser::xml::RdfXmlParser, serializer::xml::RdfXmlSerializer};
-use std::{fs::File, io::BufWriter};
+use sophia::parser::xml::RdfXmlParser;
+use sophia::serializer::xml::RdfXmlSerializer;
+use std::fs::File;
+use std::io::BufWriter;
 
 use super::Backend;
 

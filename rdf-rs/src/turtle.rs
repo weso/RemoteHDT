@@ -1,5 +1,7 @@
-use sophia::{parser::turtle::TurtleParser, serializer::turtle::TurtleSerializer};
-use std::{fs::File, io::BufWriter};
+use sophia::parser::turtle::TurtleParser;
+use sophia::serializer::turtle::TurtleSerializer;
+use std::fs::File;
+use std::io::BufWriter;
 
 use super::Backend;
 

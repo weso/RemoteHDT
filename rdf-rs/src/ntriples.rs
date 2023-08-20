@@ -1,5 +1,7 @@
-use sophia::{parser::nt::NTriplesParser, serializer::nt::NtSerializer};
-use std::{fs::File, io::BufWriter};
+use sophia::parser::nt::NTriplesParser;
+use sophia::serializer::nt::NtSerializer;
+use std::fs::File;
+use std::io::BufWriter;
 
 use super::Backend;
 
