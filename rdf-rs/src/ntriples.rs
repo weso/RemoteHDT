@@ -1,12 +1,16 @@
-use rio_turtle::{NTriplesParser, TurtleError};
-use std::{fs::File, io::BufReader};
+use sophia::{parser::nt::NTriplesParser, serializer::nt::NtSerializer};
+use std::{fs::File, io::BufWriter};
 
 use super::Backend;
 
 pub(crate) struct NTriples;
 
-impl Backend<NTriplesParser<BufReader<File>>, TurtleError> for NTriples {
-    fn concrete_parser(&self, reader: BufReader<File>) -> NTriplesParser<BufReader<File>> {
-        NTriplesParser::new(reader)
+impl Backend<NTriplesParser, NtSerializer<BufWriter<File>>> for NTriples {
+    fn concrete_parser(&self) -> NTriplesParser {
+        NTriplesParser {}
+    }
+
+    fn concrete_formatter(&self, writer: BufWriter<File>) -> NtSerializer<BufWriter<File>> {
+        NtSerializer::new(writer)
     }
 }

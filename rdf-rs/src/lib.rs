@@ -1,96 +1,95 @@
 use ntriples::NTriples;
 use rdf_xml::RdfXml;
-use rio_api::model::Triple;
-use rio_api::parser::TriplesParser;
-use std::collections::HashSet;
-use std::{fs::File, io::BufReader};
+use sophia::{
+    parser::TripleParser,
+    serializer::TripleSerializer,
+    term::{BoxTerm, Term},
+    triple::stream::TripleSource,
+};
+use std::{
+    collections::HashSet,
+    fs::File,
+    io::{BufReader, BufWriter},
+};
 use turtle::Turtle;
 
 mod ntriples;
 mod rdf_xml;
 mod turtle;
 
-// This is useful because we want to store framework independent Triples; that is,
-// the Triple struct won't depend on any other RDF crate, such as `rio`. In case
-// an external crate wants to make use of this struct, it won't need to import
-// any additional Framework; what's more, the use of it is simplified, without
-// having to deal with lifetimes or more complex data-types
-#[derive(PartialEq)]
-pub struct SimpleTriple {
-    pub subject: String,
-    pub predicate: String,
-    pub object: String,
-}
-
 pub struct RdfParser {
-    pub triples: Vec<SimpleTriple>,
+    pub graph: Vec<[BoxTerm; 3]>,
 }
 
-trait Backend<T: TriplesParser, E: From<<T>::Error>> {
-    fn parse(&self, path: &str) -> Result<Vec<SimpleTriple>, String> {
-        let mut triples: Vec<SimpleTriple> = Vec::new();
+trait Backend<P: TripleParser<BufReader<File>>, F: TripleSerializer> {
+    fn parse(&self, path: &str) -> Result<Vec<[BoxTerm; 3]>, String> {
+        let mut graph: Vec<[BoxTerm; 3]> = vec![];
 
         let reader = BufReader::new(match File::open(path) {
             Ok(file) => file,
             Err(_) => return Err(String::from("Cannot open the file")),
         });
 
-        let mut parser = self.concrete_parser(reader);
-
-        let mut on_triple = |triple: Triple| {
-            {
-                triples.push(SimpleTriple {
-                    subject: triple.subject.to_string(),
-                    predicate: triple.predicate.to_string(),
-                    object: triple.object.to_string(),
-                })
-            };
-            Ok(())
-        } as Result<(), E>;
-
-        while !parser.is_end() {
-            if parser.parse_step(&mut on_triple).is_err() {
-                // We skip the line if it is not a valid triple
-                continue;
-            }
+        match self
+            .concrete_parser()
+            .parse(reader)
+            .add_to_graph(&mut graph)
+        {
+            Ok(_) => Ok(graph),
+            Err(_) => Err(String::from("Error parsing the graph")),
         }
-
-        Ok(triples)
     }
 
-    fn concrete_parser(&self, reader: BufReader<File>) -> T;
+    fn format(&self, path: &str, graph: Vec<[BoxTerm; 3]>) -> Result<(), String> {
+        let file = File::create(path).unwrap();
+        let writer = BufWriter::new(file);
+        let mut formatter = self.concrete_formatter(writer);
+        match formatter.serialize_graph(&graph) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(String::from("Error serializing the graph")),
+        }
+    }
+
+    fn concrete_parser(&self) -> P;
+    fn concrete_formatter(&self, writer: BufWriter<File>) -> F;
 }
 
 impl RdfParser {
     pub fn new(path: &str) -> Result<Self, String> {
-        let triples = match path.split('.').last() {
-            Some("nt") => match NTriples.parse(path) {
-                Ok(triples) => triples,
-                Err(_) => return Err(String::from("Error loading the NTriples dump")),
+        Ok(RdfParser {
+            graph: match path.split('.').last() {
+                Some("nt") => match NTriples.parse(path) {
+                    Ok(graph) => graph,
+                    Err(_) => return Err(String::from("Error loading the NTriples dump")),
+                },
+                Some("ttl") => match Turtle.parse(path) {
+                    Ok(graph) => graph,
+                    Err(_) => return Err(String::from("Error loading the Turtle dump")),
+                },
+                Some("rdf") => match RdfXml.parse(path) {
+                    Ok(graph) => graph,
+                    Err(_) => return Err(String::from("Error loading the RDF/XML dump")),
+                },
+                _ => return Err(String::from("Not supported format for loading the dump")),
             },
-            Some("ttl") => match Turtle.parse(path) {
-                Ok(triples) => triples,
-                Err(_) => return Err(String::from("Error loading the Turtle dump")),
-            },
-            Some("rdf") => match RdfXml.parse(path) {
-                Ok(triples) => triples,
-                Err(_) => return Err(String::from("Error loading the RDF/XML dump")),
-            },
-            _ => return Err(String::from("Not supported format for loading the dump")),
-        };
-
-        Ok(RdfParser { triples })
+        })
     }
 
-    pub fn extract(&self) -> (HashSet<String>, HashSet<String>, HashSet<String>) {
-        let mut subjects = HashSet::<String>::new();
-        let mut predicates = HashSet::<String>::new();
-        let mut objects = HashSet::<String>::new();
+    pub fn extract(
+        &self,
+    ) -> (
+        HashSet<Term<Box<str>>>,
+        HashSet<Term<Box<str>>>,
+        HashSet<Term<Box<str>>>,
+    ) {
+        let mut subjects = HashSet::<Term<Box<str>>>::new();
+        let mut predicates = HashSet::<Term<Box<str>>>::new();
+        let mut objects = HashSet::<Term<Box<str>>>::new();
 
-        self.triples.iter().for_each(|triple| {
-            subjects.insert(triple.subject.to_string());
-            predicates.insert(triple.predicate.to_string());
-            objects.insert(triple.object.to_string());
+        self.graph.iter().for_each(|triple| {
+            subjects.insert(triple[0].to_owned());
+            predicates.insert(triple[1].to_owned());
+            objects.insert(triple[2].to_owned());
         });
 
         (subjects, predicates, objects)

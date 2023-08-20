@@ -1,4 +1,4 @@
-use rdf_rs::{RdfParser, SimpleTriple};
+use rdf_rs::RdfParser;
 use std::path::PathBuf;
 use std::str::FromStr;
 use zarr3::prelude::smallvec::smallvec;
@@ -108,11 +108,11 @@ impl<'a> RemoteHDT<'a> {
                 for subject in &subjects {
                     for predicate in &predicates {
                         for object in &objects {
-                            if dump.triples.contains(&SimpleTriple {
-                                subject: subject.to_string(),
-                                predicate: predicate.to_string(),
-                                object: object.to_string(),
-                            }) {
+                            if dump.graph.contains(&[
+                                subject.to_owned(),
+                                predicate.to_owned(),
+                                object.to_owned(),
+                            ]) {
                                 v.push(1)
                             } else {
                                 v.push(0)
