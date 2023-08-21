@@ -5,18 +5,134 @@ use zarr3::prelude::smallvec::smallvec;
 use zarr3::prelude::{create_root_group, ArrayMetadataBuilder, ArrayRegion, GroupMetadata};
 use zarr3::store::filesystem::FileSystemStore;
 use zarr3::store::NodeName;
-use zarr3::ArcArrayD;
+use zarr3::{ArcArrayD, CoordVec};
+
+#[derive(Default)]
+pub struct Domain {
+    subjects_size: usize,
+    predicates_size: usize,
+    objects_size: usize,
+}
+
+pub enum DimensionName {
+    Subject,
+    Predicate,
+    Object,
+}
+
+pub enum ReferenceSystem {
+    SPO,
+    SOP,
+    PSO,
+    POS,
+    OSP,
+    OPS,
+}
 
 pub struct RemoteHDT<'a> {
     rdf_path: &'a str,
     zarr_path: &'a str,
     array_name: &'a str,
+    reference_system: ReferenceSystem,
 }
 
 pub struct RemoteHDTBuilder<'a> {
     rdf_path: &'a str,
     zarr_path: &'a str,
     array_name: &'a str,
+    reference_system: ReferenceSystem,
+}
+
+impl From<DimensionName> for Option<String> {
+    fn from(value: DimensionName) -> Self {
+        match value {
+            DimensionName::Subject => Some("Subject".to_string()),
+            DimensionName::Predicate => Some("Predicate".to_string()),
+            DimensionName::Object => Some("Object".to_string()),
+        }
+    }
+}
+
+impl ReferenceSystem {
+    fn shape(&self, domain: &Domain) -> [usize; 3] {
+        match self {
+            ReferenceSystem::SPO => [
+                domain.subjects_size,
+                domain.predicates_size,
+                domain.objects_size,
+            ],
+            ReferenceSystem::SOP => [
+                domain.subjects_size,
+                domain.objects_size,
+                domain.predicates_size,
+            ],
+            ReferenceSystem::PSO => [
+                domain.predicates_size,
+                domain.subjects_size,
+                domain.objects_size,
+            ],
+            ReferenceSystem::POS => [
+                domain.predicates_size,
+                domain.objects_size,
+                domain.subjects_size,
+            ],
+            ReferenceSystem::OSP => [
+                domain.objects_size,
+                domain.subjects_size,
+                domain.predicates_size,
+            ],
+            ReferenceSystem::OPS => [
+                domain.objects_size,
+                domain.predicates_size,
+                domain.subjects_size,
+            ],
+        }
+    }
+
+    fn shape_u64(&self, domain: &Domain) -> [u64; 3] {
+        let shape = self
+            .shape(domain)
+            .into_iter()
+            .map(|dimension| dimension as u64)
+            .collect::<Vec<u64>>();
+
+        [shape[0], shape[1], shape[2]]
+    }
+
+    fn dimension_names(&self) -> CoordVec<Option<String>> {
+        match self {
+            ReferenceSystem::SPO => smallvec![
+                DimensionName::Subject.into(),
+                DimensionName::Predicate.into(),
+                DimensionName::Object.into()
+            ],
+            ReferenceSystem::SOP => smallvec![
+                DimensionName::Subject.into(),
+                DimensionName::Object.into(),
+                DimensionName::Predicate.into(),
+            ],
+            ReferenceSystem::PSO => smallvec![
+                DimensionName::Predicate.into(),
+                DimensionName::Subject.into(),
+                DimensionName::Object.into()
+            ],
+            ReferenceSystem::POS => smallvec![
+                DimensionName::Predicate.into(),
+                DimensionName::Object.into(),
+                DimensionName::Subject.into(),
+            ],
+            ReferenceSystem::OSP => smallvec![
+                DimensionName::Object.into(),
+                DimensionName::Subject.into(),
+                DimensionName::Predicate.into(),
+            ],
+            ReferenceSystem::OPS => smallvec![
+                DimensionName::Object.into(),
+                DimensionName::Predicate.into(),
+                DimensionName::Subject.into(),
+            ],
+        }
+    }
 }
 
 impl<'a> RemoteHDTBuilder<'a> {
@@ -26,6 +142,7 @@ impl<'a> RemoteHDTBuilder<'a> {
             rdf_path,
             zarr_path,
             array_name: "array",
+            reference_system: ReferenceSystem::SPO,
         }
     }
 
@@ -35,11 +152,18 @@ impl<'a> RemoteHDTBuilder<'a> {
         self
     }
 
+    pub fn reference_system(mut self, reference_system: ReferenceSystem) -> Self {
+        // Set the system of reference, and return the builder by value
+        self.reference_system = reference_system;
+        self
+    }
+
     pub fn build(self) -> RemoteHDT<'a> {
         RemoteHDT {
             rdf_path: self.rdf_path,
             zarr_path: self.zarr_path,
             array_name: self.array_name,
+            reference_system: self.reference_system,
         }
     }
 }
@@ -67,23 +191,21 @@ impl<'a> RemoteHDT<'a> {
         let dump = RdfParser::new(self.rdf_path)?;
         let (subjects, predicates, objects) = dump.extract();
 
+        let domain = &Domain {
+            subjects_size: subjects.len(), // size of the unique values for the Subjects
+            predicates_size: predicates.len(), // size of the unique values for the Predicates
+            objects_size: objects.len(),   // Size of the unique values for the Objects
+        };
+
         // 4. Build the structure of the Array; as such, several parameters of it are
         // tweaked. Namely, the size of the array, the size of the chunks, the name
         // of the different dimensions and the default values
         // TODO: use more than one big chunk?
         // TODO: set the codec
-        let arr_meta = ArrayMetadataBuilder::<u8>::new(&[
-            subjects.len() as u64,
-            predicates.len() as u64,
-            objects.len() as u64,
-        ])
-        .dimension_names(smallvec![
-            Some("Subjects".to_string()),
-            Some("Predicates".to_string()),
-            Some("Objects".to_string())
-        ])
-        .unwrap()
-        .build();
+        let arr_meta = ArrayMetadataBuilder::<u8>::new(&self.reference_system.shape_u64(domain))
+            .dimension_names(self.reference_system.dimension_names())
+            .unwrap()
+            .build();
 
         // 5. Create the Array provided the name of it
         let node_name = match self.array_name.parse::<NodeName>() {
@@ -101,28 +223,25 @@ impl<'a> RemoteHDT<'a> {
         // the provided values (second vector). What's more, an offset can be set;
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
-        let data = match ArcArrayD::from_shape_vec(
-            vec![subjects.len(), predicates.len(), objects.len()],
-            {
-                let mut v = Vec::<u8>::new();
-                for subject in &subjects {
-                    for predicate in &predicates {
-                        for object in &objects {
-                            if dump.graph.contains(&[
-                                subject.to_owned(),
-                                predicate.to_owned(),
-                                object.to_owned(),
-                            ]) {
-                                v.push(1)
-                            } else {
-                                v.push(0)
-                            }
+        let data = match ArcArrayD::from_shape_vec(self.reference_system.shape(domain).to_vec(), {
+            let mut v = Vec::<u8>::new();
+            for subject in &subjects {
+                for predicate in &predicates {
+                    for object in &objects {
+                        if dump.graph.contains(&[
+                            subject.to_owned(),
+                            predicate.to_owned(),
+                            object.to_owned(),
+                        ]) {
+                            v.push(1)
+                        } else {
+                            v.push(0)
                         }
                     }
                 }
-                v
-            },
-        ) {
+            }
+            v
+        }) {
             Ok(data) => data,
             Err(_) => return Err(String::from("Error creating the data Array")),
         };
@@ -158,11 +277,7 @@ impl<'a> RemoteHDT<'a> {
             "{:?}",
             arr.read_region(ArrayRegion::from_offset_shape(
                 &[0, 0, 0],
-                &[
-                    subjects.len() as u64,
-                    predicates.len() as u64,
-                    objects.len() as u64
-                ]
+                &self.reference_system.shape_u64(domain)
             ))
             .unwrap()
             .unwrap()
