@@ -43,3 +43,7 @@ For each triple, a 1 will be set to each (X, Y, Z) such that (X, Y, Z) = (s, p, 
 6. Serverless Linked Data Fragments?
 7. ~~[Benchmarking](https://www.w3.org/wiki/RdfStoreBenchmarking)~~
 8. Store the HashSet inside the Zarr directory (somewhere)
+
+## Sprint 2
+
+1. Work on the quality attributes and features that we are good at
