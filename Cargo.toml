@@ -7,3 +7,11 @@ edition = "2021"
 zarr3 = { git = "https://github.com/clbarnes/zarr3-rs.git" }
 rdf-rs = { path = "./rdf-rs" }
 rio_api = "0.8.4"
+ndarray = "0.15.6"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "lubm"
+harness = false

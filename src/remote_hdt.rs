@@ -2,9 +2,11 @@ use rdf_rs::RdfParser;
 use std::path::PathBuf;
 use std::str::FromStr;
 use zarr3::prelude::smallvec::smallvec;
-use zarr3::prelude::{create_root_group, ArrayMetadataBuilder, ArrayRegion, GroupMetadata};
+use zarr3::prelude::{
+    create_root_group, Array, ArrayMetadataBuilder, ArrayRegion, GroupMetadata, ReadableMetadata,
+};
 use zarr3::store::filesystem::FileSystemStore;
-use zarr3::store::NodeName;
+use zarr3::store::{NodeKey, NodeName};
 use zarr3::{ArcArrayD, CoordVec};
 
 #[derive(Default)]
@@ -43,12 +45,44 @@ pub struct RemoteHDTBuilder<'a> {
     reference_system: ReferenceSystem,
 }
 
+pub trait Engine {
+    fn get_predicate(dump: RemoteHDT, index: u32);
+    fn get_object(dump: RemoteHDT, index: u32);
+}
+
 impl From<DimensionName> for Option<String> {
     fn from(value: DimensionName) -> Self {
         match value {
             DimensionName::Subject => Some("Subject".to_string()),
             DimensionName::Predicate => Some("Predicate".to_string()),
             DimensionName::Object => Some("Object".to_string()),
+        }
+    }
+}
+
+impl From<&ReferenceSystem> for String {
+    fn from(value: &ReferenceSystem) -> Self {
+        match value {
+            ReferenceSystem::SPO => String::from("spo"),
+            ReferenceSystem::SOP => String::from("sop"),
+            ReferenceSystem::PSO => String::from("pso"),
+            ReferenceSystem::POS => String::from("pos"),
+            ReferenceSystem::OSP => String::from("osp"),
+            ReferenceSystem::OPS => String::from("ops"),
+        }
+    }
+}
+
+impl From<String> for ReferenceSystem {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "spo" => ReferenceSystem::SPO,
+            "sop" => ReferenceSystem::SOP,
+            "pso" => ReferenceSystem::PSO,
+            "pos" => ReferenceSystem::POS,
+            "osp" => ReferenceSystem::OSP,
+            "ops" => ReferenceSystem::OPS,
+            _ => ReferenceSystem::SPO,
         }
     }
 }
@@ -136,14 +170,20 @@ impl ReferenceSystem {
 }
 
 impl<'a> RemoteHDTBuilder<'a> {
-    pub fn new(rdf_path: &'a str, zarr_path: &'a str) -> Self {
+    pub fn new(zarr_path: &'a str) -> Self {
         // Set the minimally required fields of RemoteHDT
         RemoteHDTBuilder {
-            rdf_path,
+            rdf_path: Default::default(),
             zarr_path,
             array_name: "array",
             reference_system: ReferenceSystem::SPO,
         }
+    }
+
+    pub fn rdf_path(mut self, rdf_path: &'a str) -> Self {
+        // Set the RDF path for it to be serialized
+        self.rdf_path = rdf_path;
+        self
     }
 
     pub fn array_name(mut self, array_name: &'a str) -> Self {
@@ -169,7 +209,7 @@ impl<'a> RemoteHDTBuilder<'a> {
 }
 
 impl<'a> RemoteHDT<'a> {
-    pub fn load(self) -> Result<(), String> {
+    pub fn from_rdf(self) -> Result<(), String> {
         // 1. First, we open the File System for us to store the ZARR project
         let path = match PathBuf::from_str(self.zarr_path) {
             Ok(path) => path,
@@ -204,6 +244,17 @@ impl<'a> RemoteHDT<'a> {
         // TODO: set the codec
         let arr_meta = ArrayMetadataBuilder::<u8>::new(&self.reference_system.shape_u64(domain))
             .dimension_names(self.reference_system.dimension_names())
+            .unwrap()
+            .set_attribute("subjects".to_string(), domain.subjects_size)
+            .unwrap()
+            .set_attribute("predicates".to_string(), domain.predicates_size)
+            .unwrap()
+            .set_attribute("objects".to_string(), domain.objects_size)
+            .unwrap()
+            .set_attribute(
+                "reference_system".to_string(),
+                String::from(&self.reference_system),
+            )
             .unwrap()
             .build();
 
@@ -282,5 +333,48 @@ impl<'a> RemoteHDT<'a> {
             .unwrap()
             .unwrap()
         ))
+    }
+
+    pub fn into_ndarray(self) -> Result<ArcArrayD<u8>, String> {
+        // 1. First, we open the File System for us to retrieve the ZARR array
+        let path = match PathBuf::from_str(self.zarr_path) {
+            Ok(path) => path,
+            Err(_) => return Err(String::from("Error opening the Path for the ZARR project")),
+        };
+
+        let store = match FileSystemStore::open(path) {
+            Ok(store) => store,
+            Err(_) => return Err(String::from("Error opening the File System Store")),
+        };
+
+        // 2. We include the default Metadata to the ZARR project
+        // TODO: remove unwraps and use match :D
+        let key = NodeKey::from_str(self.array_name).unwrap();
+        let arr: Array<'_, FileSystemStore, u8> = Array::from_store(&store, key).unwrap();
+
+        let attributes = arr.get_attributes();
+
+        let domain = &Domain {
+            subjects_size: attributes.get("subjects").unwrap().as_u64().unwrap() as usize,
+            predicates_size: attributes.get("predicates").unwrap().as_u64().unwrap() as usize,
+            objects_size: attributes.get("objects").unwrap().as_u64().unwrap() as usize,
+        };
+
+        let reference_system: ReferenceSystem = ReferenceSystem::from(
+            attributes
+                .get("reference_system")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string(),
+        );
+
+        Ok(arr
+            .read_region(ArrayRegion::from_offset_shape(
+                &[0, 0, 0],
+                &reference_system.shape_u64(domain),
+            ))
+            .unwrap()
+            .unwrap())
     }
 }

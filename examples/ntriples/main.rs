@@ -1,9 +1,10 @@
 use remote_hdt::remote_hdt::RemoteHDTBuilder;
 
 pub fn main() {
-    RemoteHDTBuilder::new("examples/ntriples/rdf.nt", "root.zarr")
+    RemoteHDTBuilder::new("root.zarr")
+        .rdf_path("examples/ntriples/rdf.nt")
         .array_name("array_name")
         .build()
-        .load()
+        .from_rdf()
         .unwrap()
 }
