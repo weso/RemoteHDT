@@ -616,7 +616,7 @@ mod tests {
             }
             .get_subject(0)
             .unwrap(),
-            ArcArray3::from_shape_vec((2, 2, 3), vec![1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0]).unwrap()
+            ArcArray3::from_shape_vec((2, 2, 3), vec![1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]).unwrap()
         )
     }
 
@@ -632,7 +632,7 @@ mod tests {
             }
             .get_predicate(0)
             .unwrap(),
-            ArcArray3::from_shape_vec((2, 2, 3), vec![1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]).unwrap()
+            ArcArray3::from_shape_vec((2, 2, 3), vec![1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0]).unwrap()
         )
     }
 
