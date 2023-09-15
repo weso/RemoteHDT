@@ -127,7 +127,7 @@ pub trait Engine {
 
     fn get_second_term(&self, array: ArcArray3, size: usize, term: usize) -> ArcArray1<u8> {
         let mut factor: Array2<u8> = Array2::zeros((size, size));
-        factor[[term, 0]] = 1;
+        factor[[term, term]] = 1; // we place it in the main diagonal
 
         array
             .axis_iter(Axis(0))
@@ -137,7 +137,7 @@ pub trait Engine {
 
     fn get_third_term(&self, array: ArcArray3, size: usize, term: usize) -> ArcArray1<u8> {
         let mut factor: Array2<u8> = Array2::zeros((size, size));
-        factor[[0, term]] = 1;
+        factor[[term, term]] = 1; // we place it in the main diagonal
 
         array
             .axis_iter(Axis(0))
