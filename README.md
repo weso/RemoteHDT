@@ -47,3 +47,7 @@ For each triple, a 1 will be set to each (X, Y, Z) such that (X, Y, Z) = (s, p, 
 ## Sprint 2
 
 1. Work on the quality attributes and features that we are good at
+
+## Sprint 4
+
+1. LUBM benchmarks
