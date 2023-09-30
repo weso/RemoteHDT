@@ -281,6 +281,9 @@ impl ReferenceSystem {
             // desired mechanism
             let mut v = Vec::<(usize, usize, usize, u8)>::new();
 
+            // Could this be improved using a multithreading approach? If we use
+            // rayon the solution would be possibly faster and the implementation
+            // details wouldn't vary as much
             for (i, outer) in array.outer_iter().enumerate() {
                 for j in 0..outer.shape()[0] {
                     for k in 0..outer.shape()[1] {
@@ -300,6 +303,7 @@ impl ReferenceSystem {
 
             let mut reshaped_array = ArcArray3::zeros(other.shape(&domain));
 
+            // Same here... Using rayon would be desirable
             for (s, p, o, value) in v {
                 match other {
                     ReferenceSystem::SPO => reshaped_array[[s, p, o]] = value,
@@ -425,6 +429,8 @@ impl<'a> RemoteHDT<'a> {
         // the provided values (second vector). What's more, an offset can be set;
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
+        // TODO: use rayon for a multithreaded approach
+        // TODO: use a better method than nested loops
         let data = match ArcArrayD::from_shape_vec(self.reference_system.shape(domain).to_vec(), {
             let mut v = Vec::<u8>::new();
             for subject in &subjects {
@@ -454,7 +460,7 @@ impl<'a> RemoteHDT<'a> {
             return Err(String::from("Error writing to the Array"));
         };
 
-        // Ok(())
+        // Ok(self)
 
         // =========================================================================
         // TODO: remove this because it's just for debug purposes
