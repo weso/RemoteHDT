@@ -1,4 +1,5 @@
 use ndarray::{ArcArray, ArcArray1, Array2, Axis, Ix3};
+use rayon::prelude::{ParallelBridge, ParallelIterator};
 use rdf_rs::RdfParser;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -284,6 +285,7 @@ impl ReferenceSystem {
             // Could this be improved using a multithreading approach? If we use
             // rayon the solution would be possibly faster and the implementation
             // details wouldn't vary as much
+            // TODO: improve
             for (i, outer) in array.outer_iter().enumerate() {
                 for j in 0..outer.shape()[0] {
                     for k in 0..outer.shape()[1] {
@@ -301,7 +303,7 @@ impl ReferenceSystem {
                 }
             }
 
-            let mut reshaped_array = ArcArray3::zeros(other.shape(&domain));
+            let mut reshaped_array = ArcArray3::zeros(other.shape(domain));
 
             // Same here... Using rayon would be desirable
             for (s, p, o, value) in v {
@@ -432,23 +434,20 @@ impl<'a> RemoteHDT<'a> {
         // TODO: use rayon for a multithreaded approach
         // TODO: use a better method than nested loops
         let data = match ArcArrayD::from_shape_vec(self.reference_system.shape(domain).to_vec(), {
-            let mut v = Vec::<u8>::new();
-            for subject in &subjects {
-                for predicate in &predicates {
-                    for object in &objects {
-                        if dump.graph.contains(&[
-                            subject.to_owned(),
-                            predicate.to_owned(),
-                            object.to_owned(),
-                        ]) {
-                            v.push(1)
-                        } else {
-                            v.push(0)
-                        }
+            itertools::iproduct!(&subjects, &predicates, &objects)
+                .par_bridge()
+                .map(|(subject, predicate, object)| {
+                    if dump.graph.contains(&[
+                        subject.to_owned(),
+                        predicate.to_owned(),
+                        object.to_owned(),
+                    ]) {
+                        1
+                    } else {
+                        0
                     }
-                }
-            }
-            v
+                })
+                .collect::<Vec<u8>>()
         }) {
             Ok(data) => data,
             Err(_) => return Err(String::from("Error creating the data Array")),
@@ -460,38 +459,36 @@ impl<'a> RemoteHDT<'a> {
             return Err(String::from("Error writing to the Array"));
         };
 
-        // Ok(self)
-
         // =========================================================================
         // TODO: remove this because it's just for debug purposes
-        println!("== Subjects =====================================================");
-        subjects
-            .iter()
-            .enumerate()
-            .for_each(|(e, i)| println!("{} --> {}", e, i));
+        // println!("== Subjects =====================================================");
+        // subjects
+        //     .iter()
+        //     .enumerate()
+        //     .for_each(|(e, i)| println!("{} --> {}", e, i));
 
-        println!("== Predicates ===================================================");
-        predicates
-            .iter()
-            .enumerate()
-            .for_each(|(e, i)| println!("{} --> {}", e, i));
+        // println!("== Predicates ===================================================");
+        // predicates
+        //     .iter()
+        //     .enumerate()
+        //     .for_each(|(e, i)| println!("{} --> {}", e, i));
 
-        println!("== Objects ======================================================");
-        objects
-            .iter()
-            .enumerate()
-            .for_each(|(e, i)| println!("{} --> {}", e, i));
+        // println!("== Objects ======================================================");
+        // objects
+        //     .iter()
+        //     .enumerate()
+        //     .for_each(|(e, i)| println!("{} --> {}", e, i));
 
-        println!("== Array ========================================================");
-        println!(
-            "{:?}",
-            arr.read_region(ArrayRegion::from_offset_shape(
-                &[0, 0, 0],
-                &self.reference_system.shape_u64(domain)
-            ))
-            .unwrap()
-            .unwrap()
-        );
+        // println!("== Array ========================================================");
+        // println!(
+        //     "{:?}",
+        //     arr.read_region(ArrayRegion::from_offset_shape(
+        //         &[0, 0, 0],
+        //         &self.reference_system.shape_u64(domain)
+        //     ))
+        //     .unwrap()
+        //     .unwrap()
+        // );
 
         Ok(self)
     }
