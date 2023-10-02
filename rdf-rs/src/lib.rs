@@ -1,10 +1,10 @@
+use bimap::BiMap;
 use ntriples::NTriples;
 use rdf_xml::RdfXml;
 use sophia::parser::TripleParser;
 use sophia::serializer::TripleSerializer;
 use sophia::term::BoxTerm;
 use sophia::triple::stream::TripleSource;
-use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use turtle::Turtle;
@@ -75,15 +75,27 @@ impl RdfParser {
         })
     }
 
-    pub fn extract(&self) -> (HashSet<BoxTerm>, HashSet<BoxTerm>, HashSet<BoxTerm>) {
-        let mut subjects = HashSet::<BoxTerm>::new();
-        let mut predicates = HashSet::<BoxTerm>::new();
-        let mut objects = HashSet::<BoxTerm>::new();
+    pub fn extract(
+        &self,
+    ) -> (
+        BiMap<BoxTerm, usize>,
+        BiMap<BoxTerm, usize>,
+        BiMap<BoxTerm, usize>,
+    ) {
+        let mut subjects = BiMap::<BoxTerm, usize>::new();
+        let mut predicates = BiMap::<BoxTerm, usize>::new();
+        let mut objects = BiMap::<BoxTerm, usize>::new();
 
         self.graph.iter().for_each(|triple| {
-            subjects.insert(triple[0].to_owned());
-            predicates.insert(triple[1].to_owned());
-            objects.insert(triple[2].to_owned());
+            if !subjects.contains_left(&triple[0].to_owned()) {
+                subjects.insert(triple[0].to_owned(), subjects.len());
+            }
+            if !predicates.contains_left(&triple[1].to_owned()) {
+                predicates.insert(triple[1].to_owned(), predicates.len());
+            }
+            if !objects.contains_left(&triple[2].to_owned()) {
+                objects.insert(triple[2].to_owned(), objects.len());
+            }
         });
 
         (subjects, predicates, objects)

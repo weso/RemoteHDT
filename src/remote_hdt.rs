@@ -1,8 +1,10 @@
+use ndarray::parallel::prelude::{IntoParallelRefIterator, ParallelIterator};
 use ndarray::{ArcArray, ArcArray1, Array2, Axis, Ix3};
-use rayon::prelude::{ParallelBridge, ParallelIterator};
 use rdf_rs::RdfParser;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::Arc;
 use zarr3::prelude::smallvec::smallvec;
 use zarr3::prelude::{
     create_root_group, Array, ArrayMetadataBuilder, ArrayRegion, GroupMetadata, ReadableMetadata,
@@ -434,19 +436,20 @@ impl<'a> RemoteHDT<'a> {
         // TODO: use rayon for a multithreaded approach
         // TODO: use a better method than nested loops
         let data = match ArcArrayD::from_shape_vec(self.reference_system.shape(domain).to_vec(), {
-            itertools::iproduct!(&subjects, &predicates, &objects)
-                .par_bridge()
-                .map(|(subject, predicate, object)| {
-                    if dump.graph.contains(&[
-                        subject.to_owned(),
-                        predicate.to_owned(),
-                        object.to_owned(),
-                    ]) {
-                        1
-                    } else {
-                        0
-                    }
-                })
+            let v =
+                vec![Arc::new(AtomicU8::new(0)); subjects.len() * predicates.len() * objects.len()];
+            let slice = v.as_slice();
+            dump.graph
+                .par_iter()
+                .for_each(|[subject, predicate, object]| {
+                    let sidx = subjects.get_by_left(subject).unwrap();
+                    let pidx = predicates.get_by_left(predicate).unwrap();
+                    let oidx = objects.get_by_left(object).unwrap();
+                    slice[sidx * pidx * oidx].fetch_add(1, Ordering::SeqCst);
+                });
+            slice
+                .par_iter()
+                .map(|elem| elem.load(Ordering::SeqCst))
                 .collect::<Vec<u8>>()
         }) {
             Ok(data) => data,
@@ -455,6 +458,9 @@ impl<'a> RemoteHDT<'a> {
 
         let offset = smallvec![0, 0, 0];
 
+        // TODO: could this be done using rayon or a multi-threaded approach.
+        // Maybe using chunks instead of a region and having several chunks of
+        // the same size (i.e 100x100). Then we write in parallel?
         if arr.write_region(&offset, data).is_err() {
             return Err(String::from("Error writing to the Array"));
         };
