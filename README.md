@@ -51,3 +51,7 @@ For each triple, a 1 will be set to each (X, Y, Z) such that (X, Y, Z) = (s, p, 
 ## Sprint 4
 
 1. LUBM benchmarks
+
+## Sprint 5
+
+1. Create a Shape for the LUBM benchmarks.
