@@ -1,4 +1,4 @@
-The idea is to be able to replicate HDT using ZARR.
+This project contains an exploration on ways to replicate [HDT](https://www.rdfhdt.org/) using [ZARR](https://zarr-specs.readthedocs.io/).
 
 1. We have to be able to import data from RDF dumps
 2. Then we have to load them into the Application
