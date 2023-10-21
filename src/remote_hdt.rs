@@ -1,10 +1,7 @@
-use ndarray::parallel::prelude::{IntoParallelRefIterator, ParallelIterator};
 use ndarray::{ArcArray, ArcArray1, Array2, Axis, Ix3};
 use rdf_rs::RdfParser;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::Arc;
 use zarr3::prelude::smallvec::smallvec;
 use zarr3::prelude::{
     create_root_group, Array, ArrayMetadataBuilder, ArrayRegion, GroupMetadata, ReadableMetadata,
@@ -324,6 +321,37 @@ impl ReferenceSystem {
 
         array
     }
+
+    fn index(&self, sidx: usize, pidx: usize, oidx: usize, domain: &Domain) -> usize {
+        let sidx = match self {
+            ReferenceSystem::SPO => sidx * domain.predicates_size * domain.objects_size,
+            ReferenceSystem::SOP => sidx * domain.predicates_size * domain.objects_size,
+            ReferenceSystem::PSO => sidx * domain.objects_size,
+            ReferenceSystem::POS => sidx,
+            ReferenceSystem::OSP => sidx * domain.predicates_size,
+            ReferenceSystem::OPS => sidx,
+        };
+
+        let pidx = match self {
+            ReferenceSystem::SPO => pidx * domain.objects_size,
+            ReferenceSystem::SOP => pidx,
+            ReferenceSystem::PSO => pidx * domain.objects_size * domain.subjects_size,
+            ReferenceSystem::POS => pidx * domain.objects_size * domain.subjects_size,
+            ReferenceSystem::OSP => pidx,
+            ReferenceSystem::OPS => pidx * domain.subjects_size,
+        };
+
+        let oidx = match self {
+            ReferenceSystem::SPO => oidx,
+            ReferenceSystem::SOP => oidx * domain.predicates_size,
+            ReferenceSystem::PSO => oidx,
+            ReferenceSystem::POS => oidx * domain.subjects_size,
+            ReferenceSystem::OSP => oidx * domain.predicates_size * domain.subjects_size,
+            ReferenceSystem::OPS => oidx * domain.predicates_size * domain.subjects_size,
+        };
+
+        sidx + pidx + oidx
+    }
 }
 
 impl<'a> RemoteHDTBuilder<'a> {
@@ -399,31 +427,42 @@ impl<'a> RemoteHDT<'a> {
         // 4. Build the structure of the Array; as such, several parameters of it are
         // tweaked. Namely, the size of the array, the size of the chunks, the name
         // of the different dimensions and the default values
-        // TODO: use more than one big chunk?
-        // TODO: set the codec
-        let arr_meta = ArrayMetadataBuilder::<u8>::new(&self.reference_system.shape_u64(domain))
-            .dimension_names(self.reference_system.dimension_names())
-            .unwrap()
-            .set_attribute("subjects".to_string(), domain.subjects_size)
-            .unwrap()
-            .set_attribute("predicates".to_string(), domain.predicates_size)
-            .unwrap()
-            .set_attribute("objects".to_string(), domain.objects_size)
-            .unwrap()
+        let arr_meta = ArrayMetadataBuilder::<bool>::new(&self.reference_system.shape_u64(domain))
+            .dimension_names(self.reference_system.dimension_names())?
+            .set_attribute(
+                "subjects".to_string(),
+                subjects
+                    .iter()
+                    .map(|(key, value)| format!("{} -> {}", key, value))
+                    .collect::<Vec<_>>(),
+            )?
+            .set_attribute(
+                "predicates".to_string(),
+                predicates
+                    .iter()
+                    .map(|(key, value)| format!("{} -> {}", key, value))
+                    .collect::<Vec<_>>(),
+            )?
+            .set_attribute(
+                "objects".to_string(),
+                objects
+                    .iter()
+                    .map(|(key, value)| format!("{} -> {}", key, value))
+                    .collect::<Vec<_>>(),
+            )?
             .set_attribute(
                 "reference_system".to_string(),
                 String::from(&self.reference_system),
-            )
-            .unwrap()
+            )?
             .build();
 
-        // 5. Create the Array provided the name of it
+        // 5. Create the Array given the name of it
         let node_name = match self.array_name.parse::<NodeName>() {
             Ok(node_name) => node_name,
             Err(_) => return Err(String::from("Error parsing the NodeName")),
         };
 
-        let arr = match root_group.create_array::<u8>(node_name, arr_meta) {
+        let arr = match root_group.create_array::<bool>(node_name, arr_meta) {
             Ok(array) => array,
             Err(_) => return Err(String::from("Error creating the Array")),
         };
@@ -433,28 +472,25 @@ impl<'a> RemoteHDT<'a> {
         // the provided values (second vector). What's more, an offset can be set;
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
-        // TODO: use rayon for a multithreaded approach
-        // TODO: use a better method than nested loops
         let data = match ArcArrayD::from_shape_vec(self.reference_system.shape(domain).to_vec(), {
-            let v =
-                vec![Arc::new(AtomicU8::new(0)); subjects.len() * predicates.len() * objects.len()];
-            let slice = v.as_slice();
-            dump.graph
-                .par_iter()
-                .for_each(|[subject, predicate, object]| {
-                    let sidx = subjects.get_by_left(subject).unwrap();
-                    let pidx = predicates.get_by_left(predicate).unwrap();
-                    let oidx = objects.get_by_left(object).unwrap();
-                    slice[sidx * pidx * oidx].fetch_add(1, Ordering::SeqCst);
-                });
-            slice
-                .par_iter()
-                .map(|elem| elem.load(Ordering::SeqCst))
-                .collect::<Vec<u8>>()
+            let mut v =
+                vec![false; domain.subjects_size * domain.predicates_size * domain.objects_size];
+            let slice = v.as_mut_slice();
+            dump.graph.iter().for_each(|[subject, predicate, object]| {
+                slice[self.reference_system.index(
+                    subjects.get_by_left(subject).unwrap().to_owned(),
+                    predicates.get_by_left(predicate).unwrap().to_owned(),
+                    objects.get_by_left(object).unwrap().to_owned(),
+                    domain,
+                )] = true;
+            });
+            slice.to_vec()
         }) {
             Ok(data) => data,
             Err(_) => return Err(String::from("Error creating the data Array")),
         };
+
+        println!("{}", data);
 
         let offset = smallvec![0, 0, 0];
 
@@ -465,36 +501,16 @@ impl<'a> RemoteHDT<'a> {
             return Err(String::from("Error writing to the Array"));
         };
 
-        // =========================================================================
-        // TODO: remove this because it's just for debug purposes
-        // println!("== Subjects =====================================================");
-        // subjects
-        //     .iter()
-        //     .enumerate()
-        //     .for_each(|(e, i)| println!("{} --> {}", e, i));
-
-        // println!("== Predicates ===================================================");
-        // predicates
-        //     .iter()
-        //     .enumerate()
-        //     .for_each(|(e, i)| println!("{} --> {}", e, i));
-
-        // println!("== Objects ======================================================");
-        // objects
-        //     .iter()
-        //     .enumerate()
-        //     .for_each(|(e, i)| println!("{} --> {}", e, i));
-
-        // println!("== Array ========================================================");
-        // println!(
-        //     "{:?}",
-        //     arr.read_region(ArrayRegion::from_offset_shape(
-        //         &[0, 0, 0],
-        //         &self.reference_system.shape_u64(domain)
-        //     ))
-        //     .unwrap()
-        //     .unwrap()
-        // );
+        println!("== Array ========================================================");
+        println!(
+            "{:?}",
+            arr.read_region(ArrayRegion::from_offset_shape(
+                &[0, 0, 0],
+                &self.reference_system.shape_u64(domain)
+            ))
+            .unwrap()
+            .unwrap()
+        );
 
         Ok(self)
     }
@@ -527,9 +543,19 @@ impl<'a> RemoteHDT<'a> {
         let attributes = arr.get_attributes();
 
         let domain = &Domain {
-            subjects_size: attributes.get("subjects").unwrap().as_u64().unwrap() as usize,
-            predicates_size: attributes.get("predicates").unwrap().as_u64().unwrap() as usize,
-            objects_size: attributes.get("objects").unwrap().as_u64().unwrap() as usize,
+            subjects_size: attributes
+                .get("subjects")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .len(),
+            predicates_size: attributes
+                .get("predicates")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .len(),
+            objects_size: attributes.get("objects").unwrap().as_array().unwrap().len(),
         };
 
         let reference_system = ReferenceSystem::from(
