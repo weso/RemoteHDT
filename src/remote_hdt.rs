@@ -1,7 +1,10 @@
-use ndarray::{ArcArray, ArcArray1, Array2, Axis, Ix3};
+use bimap::BiHashMap;
+use ndarray::{ArcArray, ArcArray1, Array2, ArrayBase, Axis, Dim, Ix3, IxDynImpl, OwnedArcRepr};
 use rdf_rs::RdfParser;
+use sophia::term::BoxTerm;
 use std::path::PathBuf;
 use std::str::FromStr;
+use zarr3::codecs::bb::gzip_codec::GzipCodec;
 use zarr3::prelude::smallvec::smallvec;
 use zarr3::prelude::{
     create_root_group, Array, ArrayMetadataBuilder, ArrayRegion, GroupMetadata, ReadableMetadata,
@@ -10,7 +13,7 @@ use zarr3::store::filesystem::FileSystemStore;
 use zarr3::store::{NodeKey, NodeName};
 use zarr3::{ArcArrayD, CoordVec};
 
-type ArcArray3 = ArcArray<u8, Ix3>;
+pub type ArcArray3 = ArcArray<u8, Ix3>;
 
 #[derive(Default)]
 pub struct Domain {
@@ -427,8 +430,9 @@ impl<'a> RemoteHDT<'a> {
         // 4. Build the structure of the Array; as such, several parameters of it are
         // tweaked. Namely, the size of the array, the size of the chunks, the name
         // of the different dimensions and the default values
-        let arr_meta = ArrayMetadataBuilder::<bool>::new(&self.reference_system.shape_u64(domain))
+        let arr_meta = ArrayMetadataBuilder::<u8>::new(&self.reference_system.shape_u64(domain))
             .dimension_names(self.reference_system.dimension_names())?
+            .push_bb_codec(GzipCodec::default())
             .set_attribute(
                 "subjects".to_string(),
                 subjects
@@ -462,7 +466,7 @@ impl<'a> RemoteHDT<'a> {
             Err(_) => return Err(String::from("Error parsing the NodeName")),
         };
 
-        let arr = match root_group.create_array::<bool>(node_name, arr_meta) {
+        let arr = match root_group.create_array::<u8>(node_name, arr_meta) {
             Ok(array) => array,
             Err(_) => return Err(String::from("Error creating the Array")),
         };
@@ -472,26 +476,7 @@ impl<'a> RemoteHDT<'a> {
         // the provided values (second vector). What's more, an offset can be set;
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
-        let data = match ArcArrayD::from_shape_vec(self.reference_system.shape(domain).to_vec(), {
-            let mut v =
-                vec![false; domain.subjects_size * domain.predicates_size * domain.objects_size];
-            let slice = v.as_mut_slice();
-            dump.graph.iter().for_each(|[subject, predicate, object]| {
-                slice[self.reference_system.index(
-                    subjects.get_by_left(subject).unwrap().to_owned(),
-                    predicates.get_by_left(predicate).unwrap().to_owned(),
-                    objects.get_by_left(object).unwrap().to_owned(),
-                    domain,
-                )] = true;
-            });
-            slice.to_vec()
-        }) {
-            Ok(data) => data,
-            Err(_) => return Err(String::from("Error creating the data Array")),
-        };
-
-        println!("{}", data);
-
+        let data = self.create_array(domain, dump, subjects, predicates, objects)?;
         let offset = smallvec![0, 0, 0];
 
         // TODO: could this be done using rayon or a multi-threaded approach.
@@ -501,18 +486,34 @@ impl<'a> RemoteHDT<'a> {
             return Err(String::from("Error writing to the Array"));
         };
 
-        println!("== Array ========================================================");
-        println!(
-            "{:?}",
-            arr.read_region(ArrayRegion::from_offset_shape(
-                &[0, 0, 0],
-                &self.reference_system.shape_u64(domain)
-            ))
-            .unwrap()
-            .unwrap()
-        );
-
         Ok(self)
+    }
+
+    fn create_array(
+        &self,
+        domain: &Domain,
+        dump: RdfParser,
+        subjects: BiHashMap<BoxTerm, usize>,
+        predicates: BiHashMap<BoxTerm, usize>,
+        objects: BiHashMap<BoxTerm, usize>,
+    ) -> Result<ArrayBase<OwnedArcRepr<u8>, Dim<IxDynImpl>>, String> {
+        match ArcArrayD::from_shape_vec(self.reference_system.shape(domain).to_vec(), {
+            let mut v: Vec<u8> =
+                vec![0u8; domain.subjects_size * domain.predicates_size * domain.objects_size];
+            let slice = v.as_mut_slice();
+            dump.graph.iter().for_each(|[subject, predicate, object]| {
+                slice[self.reference_system.index(
+                    subjects.get_by_left(subject).unwrap().to_owned(),
+                    predicates.get_by_left(predicate).unwrap().to_owned(),
+                    objects.get_by_left(object).unwrap().to_owned(),
+                    domain,
+                )] = 1u8;
+            });
+            slice.to_vec()
+        }) {
+            Ok(data) => Ok(data),
+            Err(_) => return Err(String::from("Error creating the data Array")),
+        }
     }
 
     pub fn parse(mut self) -> Result<Self, String> {
@@ -588,6 +589,13 @@ impl<'a> RemoteHDT<'a> {
         };
 
         Ok(self)
+    }
+
+    pub fn get_array(self) -> Result<ArcArray3, String> {
+        match self.array {
+            Some(array) => Ok(array),
+            None => Err(String::from("Array is None")),
+        }
     }
 }
 
