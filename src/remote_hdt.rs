@@ -432,6 +432,7 @@ impl<'a> RemoteHDT<'a> {
         // of the different dimensions and the default values
         let arr_meta = ArrayMetadataBuilder::<u8>::new(&self.reference_system.shape_u64(domain))
             .dimension_names(self.reference_system.dimension_names())?
+            .push_bb_codec(GzipCodec::default())
             .set_attribute(
                 "subjects".to_string(),
                 subjects
