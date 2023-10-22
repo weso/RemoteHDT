@@ -8,4 +8,3 @@ zarr3 = { git = "https://github.com/clbarnes/zarr3-rs.git" }
 rdf-rs = { path = "./rdf-rs" }
 sophia = { version = "0.7.2" }
 ndarray = { version = "0.15.6", features = [ "rayon" ] }
-bimap = "0.6.3"
