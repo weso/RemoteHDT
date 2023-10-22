@@ -4,7 +4,7 @@ use remote_hdt::remote_hdt::{ArcArray3, RemoteHDTBuilder};
 
 #[test]
 fn write_read_test() {
-    let _ = remove_dir_all("root.zarr").unwrap();
+    let _ = remove_dir_all("root.zarr");
 
     let _ = RemoteHDTBuilder::new("root.zarr")
         .reference_system(remote_hdt::remote_hdt::ReferenceSystem::SPO)

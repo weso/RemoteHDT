@@ -1,9 +1,13 @@
 use bimap::BiHashMap;
+use ndarray::parallel::prelude::IntoParallelRefIterator;
+use ndarray::parallel::prelude::ParallelIterator;
 use ndarray::{ArcArray, ArcArray1, Array2, ArrayBase, Axis, Dim, Ix3, IxDynImpl, OwnedArcRepr};
 use rdf_rs::RdfParser;
 use sophia::term::BoxTerm;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
 use zarr3::codecs::bb::gzip_codec::GzipCodec;
 use zarr3::prelude::smallvec::smallvec;
 use zarr3::prelude::{
@@ -482,6 +486,7 @@ impl<'a> RemoteHDT<'a> {
         // TODO: could this be done using rayon or a multi-threaded approach.
         // Maybe using chunks instead of a region and having several chunks of
         // the same size (i.e 100x100). Then we write in parallel?
+        // This is the place where the system is currently taking more time
         if arr.write_region(&offset, data).is_err() {
             return Err(String::from("Error writing to the Array"));
         };
@@ -498,18 +503,26 @@ impl<'a> RemoteHDT<'a> {
         objects: BiHashMap<BoxTerm, usize>,
     ) -> Result<ArrayBase<OwnedArcRepr<u8>, Dim<IxDynImpl>>, String> {
         match ArcArrayD::from_shape_vec(self.reference_system.shape(domain).to_vec(), {
-            let mut v: Vec<u8> =
-                vec![0u8; domain.subjects_size * domain.predicates_size * domain.objects_size];
-            let slice = v.as_mut_slice();
-            dump.graph.iter().for_each(|[subject, predicate, object]| {
-                slice[self.reference_system.index(
-                    subjects.get_by_left(subject).unwrap().to_owned(),
-                    predicates.get_by_left(predicate).unwrap().to_owned(),
-                    objects.get_by_left(object).unwrap().to_owned(),
-                    domain,
-                )] = 1u8;
-            });
-            slice.to_vec()
+            let slice: Vec<AtomicU8> =
+                vec![0u8; domain.subjects_size * domain.predicates_size * domain.objects_size]
+                    .par_iter()
+                    .map(|&n| AtomicU8::new(n))
+                    .collect();
+            dump.graph
+                .par_iter()
+                .for_each(|[subject, predicate, object]| {
+                    slice[self.reference_system.index(
+                        subjects.get_by_left(subject).unwrap().to_owned(),
+                        predicates.get_by_left(predicate).unwrap().to_owned(),
+                        objects.get_by_left(object).unwrap().to_owned(),
+                        domain,
+                    )]
+                    .store(1u8, Ordering::Relaxed);
+                });
+            slice
+                .iter()
+                .map(|elem| elem.load(Ordering::Relaxed))
+                .collect::<Vec<u8>>()
         }) {
             Ok(data) => Ok(data),
             Err(_) => return Err(String::from("Error creating the data Array")),
