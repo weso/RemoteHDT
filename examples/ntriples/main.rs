@@ -5,5 +5,6 @@ pub fn main() {
         .rdf_path("examples/ntriples/rdf.nt")
         .array_name("array_name")
         .build()
-        .serialize();
+        .serialize()
+        .unwrap();
 }

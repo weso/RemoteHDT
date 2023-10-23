@@ -1,5 +1,5 @@
-use sophia::parser::nt::NTriplesParser;
-use sophia::serializer::nt::NtSerializer;
+use sophia::turtle::parser::nt::NTriplesParser;
+use sophia::turtle::serializer::nt::NtSerializer;
 use std::fs::File;
 use std::io::BufWriter;
 
@@ -7,7 +7,7 @@ use super::Backend;
 
 pub(crate) struct NTriples;
 
-impl Backend<NTriplesParser, NtSerializer<BufWriter<File>>> for NTriples {
+impl<'a> Backend<'a, NTriplesParser, NtSerializer<BufWriter<File>>> for NTriples {
     fn concrete_parser(&self) -> NTriplesParser {
         NTriplesParser {}
     }

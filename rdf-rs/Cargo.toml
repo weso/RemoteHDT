@@ -4,6 +4,6 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-sophia = { version = "0.7.2", features = ["xml"] }
+sophia = { version = "0.8.0-alpha.2", features = [ "xml" ] }
 bimap = "0.6.3"
 rayon = "1.8.0"

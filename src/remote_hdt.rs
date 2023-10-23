@@ -1,12 +1,15 @@
+use ndarray::parallel::prelude::IndexedParallelIterator;
 use ndarray::parallel::prelude::IntoParallelRefIterator;
 use ndarray::parallel::prelude::ParallelIterator;
 use ndarray::{ArcArray, ArcArray1, Array2, ArrayBase, Axis, Dim, Ix3, IxDynImpl, OwnedArcRepr};
 use rdf_rs::RdfParser;
-use sophia::graph::GTripleSource;
-use sophia::graph::Graph;
-use sophia::term::Term;
-use sophia::triple::Triple;
-use std::collections::HashMap;
+use sophia::api::prelude::Graph;
+use sophia::api::term::CmpTerm;
+use sophia::api::term::SimpleTerm;
+use sophia::api::term::Term;
+use sophia::api::triple::Triple;
+use sophia::inmem::index::TermIndexFullError;
+use sophia::term::ArcTerm;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
@@ -24,9 +27,9 @@ pub type ArcArray3 = ArcArray<u8, Ix3>;
 
 #[derive(Default)]
 pub struct Domain {
-    subjects_size: usize,
-    predicates_size: usize,
-    objects_size: usize,
+    subjects: Vec<CmpTerm<ArcTerm>>,
+    predicates: Vec<CmpTerm<ArcTerm>>,
+    objects: Vec<CmpTerm<ArcTerm>>,
 }
 
 pub enum DimensionName {
@@ -57,6 +60,7 @@ pub struct RemoteHDT<'a> {
     array_name: &'a str,
     reference_system: ReferenceSystem,
     array: Option<ArcArray3>,
+    domain: Domain,
 }
 
 pub struct RemoteHDTBuilder<'a> {
@@ -65,6 +69,7 @@ pub struct RemoteHDTBuilder<'a> {
     array_name: &'a str,
     reference_system: ReferenceSystem,
     array: Option<ArcArray3>,
+    domain: Domain,
 }
 
 pub trait Engine {
@@ -197,40 +202,41 @@ impl From<String> for ReferenceSystem {
     }
 }
 
+impl Domain {
+    pub fn get_subject(&self, subject: &str) -> Option<usize> {
+        self.subjects
+            .par_iter()
+            .position_first(|e| e.to_owned() == subject.into_term::<CmpTerm<ArcTerm>>())
+    }
+
+    pub fn get_predicate(&self, predicate: &str) -> Option<usize> {
+        self.subjects
+            .par_iter()
+            .position_first(|e| e.to_owned() == predicate.into_term::<CmpTerm<ArcTerm>>())
+    }
+
+    pub fn get_object(&self, object: &str) -> Option<usize> {
+        self.subjects
+            .par_iter()
+            .position_first(|e| e.to_owned() == object.into_term::<CmpTerm<ArcTerm>>())
+    }
+}
+
 impl ReferenceSystem {
     fn shape(&self, domain: &Domain) -> [usize; 3] {
-        match self {
-            ReferenceSystem::SPO => [
-                domain.subjects_size,
-                domain.predicates_size,
-                domain.objects_size,
-            ],
-            ReferenceSystem::SOP => [
-                domain.subjects_size,
-                domain.objects_size,
-                domain.predicates_size,
-            ],
-            ReferenceSystem::PSO => [
-                domain.predicates_size,
-                domain.subjects_size,
-                domain.objects_size,
-            ],
-            ReferenceSystem::POS => [
-                domain.predicates_size,
-                domain.objects_size,
-                domain.subjects_size,
-            ],
-            ReferenceSystem::OSP => [
-                domain.objects_size,
-                domain.subjects_size,
-                domain.predicates_size,
-            ],
-            ReferenceSystem::OPS => [
-                domain.objects_size,
-                domain.predicates_size,
-                domain.subjects_size,
-            ],
+        let shape = match self {
+            ReferenceSystem::SPO => [&domain.subjects, &domain.predicates, &domain.objects],
+            ReferenceSystem::SOP => [&domain.subjects, &domain.objects, &domain.predicates],
+            ReferenceSystem::PSO => [&domain.predicates, &domain.subjects, &domain.objects],
+            ReferenceSystem::POS => [&domain.predicates, &domain.objects, &domain.subjects],
+            ReferenceSystem::OSP => [&domain.objects, &domain.subjects, &domain.predicates],
+            ReferenceSystem::OPS => [&domain.objects, &domain.predicates, &domain.subjects],
         }
+        .iter()
+        .map(|dimension| dimension.len())
+        .collect::<Vec<usize>>();
+
+        [shape[0], shape[1], shape[2]]
     }
 
     fn shape_u64(&self, domain: &Domain) -> [u64; 3] {
@@ -278,6 +284,40 @@ impl ReferenceSystem {
         }
     }
 
+    fn vec_size(&self, domain: &Domain) -> usize {
+        match self {
+            ReferenceSystem::SPO => &domain.predicates.len() * &domain.objects.len(),
+            ReferenceSystem::SOP => &domain.predicates.len() * &domain.objects.len(),
+            ReferenceSystem::PSO => &domain.subjects.len() * &domain.objects.len(),
+            ReferenceSystem::POS => &domain.subjects.len() * &domain.objects.len(),
+            ReferenceSystem::OSP => &domain.subjects.len() * &domain.predicates.len(),
+            ReferenceSystem::OPS => &domain.subjects.len() * &domain.predicates.len(),
+        }
+    }
+
+    fn chunk_size(&self, domain: &Domain) -> [usize; 3] {
+        let domain = self.shape(domain);
+        let (subjects, predicates, objects) = (domain[0], domain[1], domain[2]);
+        match self {
+            ReferenceSystem::SPO => [1, predicates, objects],
+            ReferenceSystem::SOP => [1, objects, predicates],
+            ReferenceSystem::PSO => [1, subjects, objects],
+            ReferenceSystem::POS => [1, objects, subjects],
+            ReferenceSystem::OSP => [1, subjects, predicates],
+            ReferenceSystem::OPS => [1, predicates, subjects],
+        }
+    }
+
+    fn chunk_size_u64(&self, domain: &Domain) -> [u64; 3] {
+        let chunk = self
+            .chunk_size(domain)
+            .into_iter()
+            .map(|dimension| dimension as u64)
+            .collect::<Vec<u64>>();
+
+        [chunk[0], chunk[1], chunk[2]]
+    }
+
     fn convert_to(
         &self,
         other: &ReferenceSystem,
@@ -294,7 +334,7 @@ impl ReferenceSystem {
             // Could this be improved using a multithreading approach? If we use
             // rayon the solution would be possibly faster and the implementation
             // details wouldn't vary as much
-            // TODO: improve
+            // TODO: improve this if possible
             for (i, outer) in array.outer_iter().enumerate() {
                 for j in 0..outer.shape()[0] {
                     for k in 0..outer.shape()[1] {
@@ -333,34 +373,37 @@ impl ReferenceSystem {
     }
 
     fn index(&self, sidx: usize, pidx: usize, oidx: usize, domain: &Domain) -> usize {
-        // let sidx = match self {
-        //     ReferenceSystem::SPO => sidx * domain.predicates_size * domain.objects_size,
-        //     ReferenceSystem::SOP => sidx * domain.predicates_size * domain.objects_size,
-        //     ReferenceSystem::PSO => sidx * domain.objects_size,
-        //     ReferenceSystem::POS => sidx,
-        //     ReferenceSystem::OSP => sidx * domain.predicates_size,
-        //     ReferenceSystem::OPS => sidx,
-        // };
+        let shape = self.shape(domain);
+        let (subjects_size, predicates_size, objects_size) = (shape[0], shape[1], shape[2]);
+
+        let sidx = match self {
+            ReferenceSystem::SPO => 0,
+            ReferenceSystem::SOP => 0,
+            ReferenceSystem::PSO => sidx * objects_size,
+            ReferenceSystem::POS => sidx,
+            ReferenceSystem::OSP => sidx * predicates_size,
+            ReferenceSystem::OPS => sidx,
+        };
 
         let pidx = match self {
-            ReferenceSystem::SPO => pidx * domain.objects_size,
+            ReferenceSystem::SPO => pidx * objects_size,
             ReferenceSystem::SOP => pidx,
-            ReferenceSystem::PSO => pidx * domain.objects_size * domain.subjects_size,
-            ReferenceSystem::POS => pidx * domain.objects_size * domain.subjects_size,
+            ReferenceSystem::PSO => 0,
+            ReferenceSystem::POS => 0,
             ReferenceSystem::OSP => pidx,
-            ReferenceSystem::OPS => pidx * domain.subjects_size,
+            ReferenceSystem::OPS => pidx * subjects_size,
         };
 
         let oidx = match self {
             ReferenceSystem::SPO => oidx,
-            ReferenceSystem::SOP => oidx * domain.predicates_size,
+            ReferenceSystem::SOP => oidx * predicates_size,
             ReferenceSystem::PSO => oidx,
-            ReferenceSystem::POS => oidx * domain.subjects_size,
-            ReferenceSystem::OSP => oidx * domain.predicates_size * domain.subjects_size,
-            ReferenceSystem::OPS => oidx * domain.predicates_size * domain.subjects_size,
+            ReferenceSystem::POS => oidx * subjects_size,
+            ReferenceSystem::OSP => 0,
+            ReferenceSystem::OPS => 0,
         };
 
-        pidx + oidx
+        sidx + pidx + oidx
     }
 }
 
@@ -373,6 +416,7 @@ impl<'a> RemoteHDTBuilder<'a> {
             array_name: "array",
             reference_system: ReferenceSystem::SPO,
             array: None,
+            domain: Default::default(),
         }
     }
 
@@ -401,12 +445,13 @@ impl<'a> RemoteHDTBuilder<'a> {
             array_name: self.array_name,
             reference_system: self.reference_system,
             array: self.array,
+            domain: self.domain,
         }
     }
 }
 
 impl<'a> RemoteHDT<'a> {
-    pub fn serialize(self) -> Result<Self, String> {
+    pub fn serialize(mut self) -> Result<Self, String> {
         // 1. First, we open the File System for us to store the ZARR project
         let path = match PathBuf::from_str(self.zarr_path) {
             Ok(path) => path,
@@ -426,71 +471,98 @@ impl<'a> RemoteHDT<'a> {
 
         // 3. Import the RDF dump using `rdf-rs`
         let dump = RdfParser::new(self.rdf_path)?;
-        let binding = dump.graph.subjects().unwrap();
-        let subjects = binding
-            .iter()
-            .enumerate()
-            .map(|(key, value)| (value.to_owned(), key)) // TODO: remove to_owned
-            .collect::<HashMap<Term<String>, usize>>();
-        let binding = dump.graph.predicates().unwrap();
-        let predicates = binding
-            .iter()
-            .enumerate()
-            .map(|(key, value)| (value.to_owned(), key))
-            .collect::<HashMap<Term<String>, usize>>(); // TODO: remove unwrap
-        let binding = dump.graph.objects().unwrap();
-        let objects = binding
-            .iter()
-            .enumerate()
-            .map(|(key, value)| (value.to_owned(), key))
-            .collect::<HashMap<Term<String>, usize>>(); // TODO: remove unwrap
 
-        let domain = &Domain {
-            subjects_size: subjects.len(), // size of the unique values for the Subjects
-            predicates_size: predicates.len(), // size of the unique values for the Predicates
-            objects_size: objects.len(),   // Size of the unique values for the Objects
+        let subject_binding = dump.graph.subjects();
+        let predicate_binding = dump.graph.predicates();
+        let object_binding = dump.graph.objects();
+
+        self.domain = Domain {
+            // We store the subjects to be serialized
+            subjects: {
+                let mut ans = Vec::<CmpTerm<ArcTerm>>::new();
+                subject_binding.for_each(|subject| {
+                    if subject.is_ok()
+                        && !ans.contains(&subject.unwrap().into_term::<CmpTerm<ArcTerm>>())
+                    {
+                        ans.push(subject.unwrap().into_term());
+                    }
+                });
+                ans
+            },
+            // We store the predicates to be serialized
+            predicates: {
+                let mut ans = Vec::<CmpTerm<ArcTerm>>::new();
+                predicate_binding.for_each(|predicate| {
+                    if predicate.is_ok()
+                        && !ans.contains(&predicate.unwrap().into_term::<CmpTerm<ArcTerm>>())
+                    {
+                        ans.push(predicate.unwrap().into_term());
+                    }
+                });
+                ans
+            },
+            // We store the objects to be serialized
+            objects: {
+                let mut ans = Vec::<CmpTerm<ArcTerm>>::new();
+                object_binding.for_each(|object| {
+                    if object.is_ok()
+                        && !ans.contains(&object.unwrap().into_term::<CmpTerm<ArcTerm>>())
+                    {
+                        ans.push(object.unwrap().into_term());
+                    }
+                });
+                ans
+            },
         };
 
         // 4. Build the structure of the Array; as such, several parameters of it are
         // tweaked. Namely, the size of the array, the size of the chunks, the name
         // of the different dimensions and the default values
-        let arr_meta = ArrayMetadataBuilder::<u8>::new(&self.reference_system.shape_u64(domain))
-            .dimension_names(self.reference_system.dimension_names())?
-            .chunk_grid(
-                vec![
-                    1,
-                    self.reference_system.shape_u64(domain)[1],
-                    self.reference_system.shape_u64(domain)[2],
-                ] // TODO: improve this
-                .as_slice(),
-            )?
-            .push_bb_codec(GzipCodec::default())
-            .set_attribute(
-                "subjects".to_string(),
-                subjects
-                    .iter()
-                    .map(|(key, value)| format!("{} -> {}", key, value))
-                    .collect::<Vec<_>>(),
-            )?
-            .set_attribute(
-                "predicates".to_string(),
-                predicates
-                    .iter()
-                    .map(|(key, value)| format!("{} -> {}", key, value))
-                    .collect::<Vec<_>>(),
-            )?
-            .set_attribute(
-                "objects".to_string(),
-                objects
-                    .iter()
-                    .map(|(key, value)| format!("{} -> {}", key, value))
-                    .collect::<Vec<_>>(),
-            )?
-            .set_attribute(
-                "reference_system".to_string(),
-                String::from(&self.reference_system),
-            )?
-            .build();
+        let arr_meta =
+            ArrayMetadataBuilder::<u8>::new(&self.reference_system.shape_u64(&self.domain))
+                .dimension_names(self.reference_system.dimension_names())?
+                .chunk_grid(
+                    self.reference_system
+                        .chunk_size_u64(&self.domain)
+                        .as_slice(),
+                )?
+                .push_bb_codec(GzipCodec::default())
+                .set_attribute(
+                    "subjects".to_string(),
+                    &self
+                        .domain
+                        .subjects
+                        .par_iter()
+                        .map(|subject| format!("{:?}", &subject.0.iri().unwrap()))
+                        .collect::<Vec<_>>(),
+                )?
+                .set_attribute(
+                    "predicates".to_string(),
+                    &self
+                        .domain
+                        .predicates
+                        .par_iter()
+                        .map(|predicate| format!("{:?}", predicate))
+                        .collect::<Vec<_>>(),
+                )?
+                .set_attribute(
+                    "objects".to_string(),
+                    &self
+                        .domain
+                        .objects
+                        .par_iter()
+                        .map(
+                            |object: &CmpTerm<sophia::term::GenericTerm<std::sync::Arc<str>>>| {
+                                format!("{:?}", object)
+                            },
+                        )
+                        .collect::<Vec<_>>(),
+                )?
+                .set_attribute(
+                    "reference_system".to_string(),
+                    String::from(&self.reference_system),
+                )?
+                .build();
 
         // 5. Create the Array given the name of it
         let node_name = match self.array_name.parse::<NodeName>() {
@@ -508,63 +580,78 @@ impl<'a> RemoteHDT<'a> {
         // the provided values (second vector). What's more, an offset can be set;
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
-        subjects.par_iter().for_each(|(subject, i)| {
-            let _ = arr.write_chunk(
-                &smallvec![*i as u64, 0, 0],
-                self.create_array(
-                    domain,
-                    dump.graph.triples_with_s(subject),
-                    &predicates,
-                    &objects,
-                    *i,
-                )
-                .unwrap(),
-            );
-        });
+        self.domain // TODO: this should be modified depending on the orientation of the dataset
+            .subjects
+            .to_owned()
+            .par_iter()
+            .enumerate()
+            .for_each(|(i, subject)| {
+                let _ = arr.write_chunk(&smallvec![i as u64, 0, 0], {
+                    self.create_array(
+                        dump.graph
+                            .triples()
+                            .filter(|triple| triple.unwrap().s() == subject)
+                            .collect::<Vec<Result<[&SimpleTerm<'static>; 3], TermIndexFullError>>>(
+                            ),
+                        i,
+                    )
+                    .unwrap()
+                });
+            });
 
         Ok(self)
     }
 
     fn create_array(
         &self,
-        domain: &Domain,
-        triples: GTripleSource<Vec<[Term<String>; 3]>>,
-        predicates: &HashMap<Term<String>, usize>,
-        objects: &HashMap<Term<String>, usize>,
+        triples: Vec<Result<[&SimpleTerm<'static>; 3], TermIndexFullError>>,
         chunk_idx: usize,
     ) -> Result<ArrayBase<OwnedArcRepr<u8>, Dim<IxDynImpl>>, String> {
         match ArcArrayD::from_shape_vec(
-            vec![
-                1 as usize,
-                self.reference_system.shape(domain)[1],
-                self.reference_system.shape(domain)[2],
-            ] // TODO: improve this
-            .as_slice(),
+            self.reference_system.chunk_size(&self.domain).as_slice(),
             {
-                let slice: Vec<AtomicU8> = vec![0u8; domain.predicates_size * domain.objects_size]
+                let slice: Vec<AtomicU8> = vec![0u8; self.reference_system.vec_size(&self.domain)]
                     .par_iter()
                     .map(|&n| AtomicU8::new(n))
                     .collect();
-                triples.for_each(|triple| {
-                    let triple = triple.unwrap();
 
-                    let pidx = predicates.get(triple.p()).unwrap().to_owned(); // TODO: remove unwrap
-                    let oidx = objects.get(triple.o()).unwrap().to_owned();
+                triples.par_iter().for_each(|triple| {
+                    let pidx = match self
+                        .domain
+                        .predicates
+                        .par_iter()
+                        .position_first(|elem| elem == triple.unwrap().p())
+                    {
+                        Some(pidx) => pidx,
+                        None => return,
+                    };
+                    let oidx = match self
+                        .domain
+                        .objects
+                        .par_iter()
+                        .position_first(|elem| elem == triple.unwrap().o())
+                    {
+                        Some(oidx) => oidx,
+                        None => return,
+                    };
 
-                    slice[self
-                        .reference_system
-                        .index(chunk_idx as usize, pidx, oidx, domain)]
+                    slice[self.reference_system.index(
+                        chunk_idx as usize,
+                        pidx,
+                        oidx,
+                        &self.domain,
+                    )]
                     .store(1u8, Ordering::Relaxed);
                 });
 
                 slice
-                    .iter() // TODO: par_iter?
+                    .par_iter()
                     .map(|elem| elem.load(Ordering::Relaxed))
                     .collect::<Vec<u8>>()
             },
         ) {
             Ok(data) => Ok(data),
-            Err(_) => return Err(String::from("Error creating the data Array")),
+            Err(error) => return Err(String::from(error.to_string())), // TODO: fix this error message
         }
     }
 
@@ -595,20 +682,31 @@ impl<'a> RemoteHDT<'a> {
         // 4. We get the attributes so we can obtain some values that we will need
         let attributes = arr.get_attributes();
 
-        let domain = &Domain {
-            subjects_size: attributes
+        self.domain = Domain {
+            subjects: attributes
                 .get("subjects")
                 .unwrap()
                 .as_array()
                 .unwrap()
-                .len(),
-            predicates_size: attributes
+                .par_iter()
+                .map(|subject| subject.as_str().unwrap().into_term())
+                .collect::<Vec<CmpTerm<ArcTerm>>>(),
+            predicates: attributes
                 .get("predicates")
                 .unwrap()
                 .as_array()
                 .unwrap()
-                .len(),
-            objects_size: attributes.get("objects").unwrap().as_array().unwrap().len(),
+                .par_iter()
+                .map(|predicate| predicate.as_str().unwrap().into_term())
+                .collect::<Vec<CmpTerm<ArcTerm>>>(),
+            objects: attributes
+                .get("objects")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .par_iter()
+                .map(|object| object.as_str().unwrap().into_term())
+                .collect::<Vec<CmpTerm<ArcTerm>>>(),
         };
 
         let reference_system = ReferenceSystem::from(
@@ -622,7 +720,7 @@ impl<'a> RemoteHDT<'a> {
 
         // 5. We read the region from the Array we have just created
         // TODO: restrict ourselves to a certain region, not to the whole dump :(
-        let shape_u64 = &reference_system.shape_u64(domain);
+        let shape_u64 = &reference_system.shape_u64(&self.domain);
         let array_region = ArrayRegion::from_offset_shape(&[0, 0, 0], shape_u64);
 
         let region = match arr.read_region(array_region) {
@@ -636,7 +734,7 @@ impl<'a> RemoteHDT<'a> {
         };
 
         self.array = match array {
-            Ok(ans) => Some(reference_system.convert_to(&self.reference_system, ans, domain)),
+            Ok(ans) => Some(reference_system.convert_to(&self.reference_system, ans, &self.domain)),
             Err(_) => return Err(String::from("Error converting to a 3-dimensional array")),
         };
 
@@ -648,6 +746,10 @@ impl<'a> RemoteHDT<'a> {
             Some(array) => Ok(array),
             None => Err(String::from("Array is None")),
         }
+    }
+
+    pub fn get_domain(self) -> Domain {
+        self.domain
     }
 }
 
@@ -669,6 +771,10 @@ impl Engine for RemoteHDT<'_> {
 #[cfg(test)]
 mod tests {
     use super::{ArcArray3, Domain, Engine, ReferenceSystem, RemoteHDT};
+    use sophia::{
+        api::term::{CmpTerm, Term},
+        term::ArcTerm,
+    };
 
     // We create a SPO array with the following Shape:
     // [       O1  O2  03
@@ -679,13 +785,23 @@ mod tests {
     //    P1 [[ 1,  1,  0],
     //    P2  [ 0,  0,  0]], // S2
     // ]  (Shape: Subjects = 2, Predicates = 2, Objects = 3)
-    fn spo_array() -> (ArcArray3, Domain) {
+    fn spo_array<'a>() -> (ArcArray3, Domain) {
         (
             ArcArray3::from_shape_vec((2, 2, 3), vec![1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0]).unwrap(),
             Domain {
-                subjects_size: 2,
-                predicates_size: 2,
-                objects_size: 3,
+                subjects: vec![
+                    "S1".into_term::<CmpTerm<ArcTerm>>(),
+                    "S2".into_term::<CmpTerm<ArcTerm>>(),
+                ],
+                predicates: vec![
+                    "P1".into_term::<CmpTerm<ArcTerm>>(),
+                    "P2".into_term::<CmpTerm<ArcTerm>>(),
+                ],
+                objects: vec![
+                    "O1".into_term::<CmpTerm<ArcTerm>>(),
+                    "O2".into_term::<CmpTerm<ArcTerm>>(),
+                    "O3".into_term::<CmpTerm<ArcTerm>>(),
+                ],
             },
         )
     }
@@ -708,6 +824,7 @@ mod tests {
                 array_name: Default::default(),
                 reference_system: ReferenceSystem::SPO,
                 array: Some(spo_array().0),
+                domain: spo_array().1,
             }
             .get_subject(0)
             .unwrap(),
@@ -724,6 +841,7 @@ mod tests {
                 array_name: Default::default(),
                 reference_system: ReferenceSystem::SPO,
                 array: Some(spo_array().0),
+                domain: spo_array().1,
             }
             .get_predicate(0)
             .unwrap(),
@@ -740,6 +858,7 @@ mod tests {
                 array_name: Default::default(),
                 reference_system: ReferenceSystem::SPO,
                 array: Some(spo_array().0),
+                domain: spo_array().1,
             }
             .get_object(0)
             .unwrap(),
