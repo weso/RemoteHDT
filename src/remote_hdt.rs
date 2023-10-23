@@ -297,25 +297,12 @@ impl ReferenceSystem {
 
     fn chunk_size(&self, domain: &Domain) -> [usize; 3] {
         let domain = self.shape(domain);
-        let (subjects, predicates, objects) = (domain[0], domain[1], domain[2]);
-        match self {
-            ReferenceSystem::SPO => [1, predicates, objects],
-            ReferenceSystem::SOP => [1, objects, predicates],
-            ReferenceSystem::PSO => [1, subjects, objects],
-            ReferenceSystem::POS => [1, objects, subjects],
-            ReferenceSystem::OSP => [1, subjects, predicates],
-            ReferenceSystem::OPS => [1, predicates, subjects],
-        }
+        [1, domain[1], domain[2]]
     }
 
     fn chunk_size_u64(&self, domain: &Domain) -> [u64; 3] {
-        let chunk = self
-            .chunk_size(domain)
-            .into_iter()
-            .map(|dimension| dimension as u64)
-            .collect::<Vec<u64>>();
-
-        [chunk[0], chunk[1], chunk[2]]
+        let domain: [u64; 3] = self.shape_u64(domain);
+        [1, domain[1], domain[2]]
     }
 
     fn convert_to(
@@ -374,31 +361,30 @@ impl ReferenceSystem {
 
     fn index(&self, sidx: usize, pidx: usize, oidx: usize, domain: &Domain) -> usize {
         let shape = self.shape(domain);
-        let (subjects_size, predicates_size, objects_size) = (shape[0], shape[1], shape[2]);
 
         let sidx = match self {
             ReferenceSystem::SPO => 0,
             ReferenceSystem::SOP => 0,
-            ReferenceSystem::PSO => sidx * objects_size,
+            ReferenceSystem::PSO => sidx * shape[2],
             ReferenceSystem::POS => sidx,
-            ReferenceSystem::OSP => sidx * predicates_size,
+            ReferenceSystem::OSP => sidx * shape[2],
             ReferenceSystem::OPS => sidx,
         };
 
         let pidx = match self {
-            ReferenceSystem::SPO => pidx * objects_size,
+            ReferenceSystem::SPO => pidx * shape[2],
             ReferenceSystem::SOP => pidx,
             ReferenceSystem::PSO => 0,
             ReferenceSystem::POS => 0,
             ReferenceSystem::OSP => pidx,
-            ReferenceSystem::OPS => pidx * subjects_size,
+            ReferenceSystem::OPS => pidx * shape[2],
         };
 
         let oidx = match self {
             ReferenceSystem::SPO => oidx,
-            ReferenceSystem::SOP => oidx * predicates_size,
+            ReferenceSystem::SOP => oidx * shape[2],
             ReferenceSystem::PSO => oidx,
-            ReferenceSystem::POS => oidx * subjects_size,
+            ReferenceSystem::POS => oidx * shape[2],
             ReferenceSystem::OSP => 0,
             ReferenceSystem::OPS => 0,
         };
@@ -580,24 +566,31 @@ impl<'a> RemoteHDT<'a> {
         // the provided values (second vector). What's more, an offset can be set;
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
-        self.domain // TODO: this should be modified depending on the orientation of the dataset
-            .subjects
-            .to_owned()
-            .par_iter()
-            .enumerate()
-            .for_each(|(i, subject)| {
-                let _ = arr.write_chunk(&smallvec![i as u64, 0, 0], {
-                    self.create_array(
-                        dump.graph
-                            .triples()
-                            .filter(|triple| triple.unwrap().s() == subject)
-                            .collect::<Vec<Result<[&SimpleTerm<'static>; 3], TermIndexFullError>>>(
-                            ),
-                        i,
-                    )
-                    .unwrap()
-                });
+        match self.reference_system {
+            ReferenceSystem::SPO | ReferenceSystem::SOP => self.domain.subjects.to_owned(),
+            ReferenceSystem::PSO | ReferenceSystem::POS => self.domain.predicates.to_owned(),
+            ReferenceSystem::OSP | ReferenceSystem::OPS => self.domain.objects.to_owned(),
+        }
+        .par_iter()
+        .enumerate()
+        .for_each(|(i, term)| {
+            let _ = arr.write_chunk(&smallvec![i as u64, 0, 0], {
+                self.create_array(
+                    dump.graph
+                        .triples()
+                        .filter(|triple| {
+                            term == match self.reference_system {
+                                ReferenceSystem::SPO | ReferenceSystem::SOP => triple.unwrap().s(),
+                                ReferenceSystem::PSO | ReferenceSystem::POS => triple.unwrap().p(),
+                                ReferenceSystem::OSP | ReferenceSystem::OPS => triple.unwrap().o(),
+                            }
+                        })
+                        .collect::<Vec<Result<[&SimpleTerm<'static>; 3], TermIndexFullError>>>(),
+                    i,
+                )
+                .unwrap()
             });
+        });
 
         Ok(self)
     }
@@ -605,7 +598,7 @@ impl<'a> RemoteHDT<'a> {
     fn create_array(
         &self,
         triples: Vec<Result<[&SimpleTerm<'static>; 3], TermIndexFullError>>,
-        chunk_idx: usize,
+        idx: usize,
     ) -> Result<ArrayBase<OwnedArcRepr<u8>, Dim<IxDynImpl>>, String> {
         match ArcArrayD::from_shape_vec(
             self.reference_system.chunk_size(&self.domain).as_slice(),
@@ -616,32 +609,45 @@ impl<'a> RemoteHDT<'a> {
                     .collect();
 
                 triples.par_iter().for_each(|triple| {
-                    let pidx = match self
-                        .domain
-                        .predicates
-                        .par_iter()
-                        .position_first(|elem| elem == triple.unwrap().p())
-                    {
-                        Some(pidx) => pidx,
-                        None => return,
+                    let sidx = match self.reference_system {
+                        ReferenceSystem::SPO | ReferenceSystem::SOP => idx,
+                        _ => match self
+                            .domain
+                            .subjects
+                            .par_iter()
+                            .position_first(|elem| elem == triple.unwrap().s())
+                        {
+                            Some(sidx) => sidx,
+                            None => return,
+                        },
                     };
-                    let oidx = match self
-                        .domain
-                        .objects
-                        .par_iter()
-                        .position_first(|elem| elem == triple.unwrap().o())
-                    {
-                        Some(oidx) => oidx,
-                        None => return,
+                    let pidx = match self.reference_system {
+                        ReferenceSystem::PSO | ReferenceSystem::POS => idx,
+                        _ => match self
+                            .domain
+                            .predicates
+                            .par_iter()
+                            .position_first(|elem| elem == triple.unwrap().p())
+                        {
+                            Some(pidx) => pidx,
+                            None => return,
+                        },
+                    };
+                    let oidx = match self.reference_system {
+                        ReferenceSystem::OSP | ReferenceSystem::OPS => idx,
+                        _ => match self
+                            .domain
+                            .objects
+                            .par_iter()
+                            .position_first(|elem| elem == triple.unwrap().o())
+                        {
+                            Some(oidx) => oidx,
+                            None => return,
+                        },
                     };
 
-                    slice[self.reference_system.index(
-                        chunk_idx as usize,
-                        pidx,
-                        oidx,
-                        &self.domain,
-                    )]
-                    .store(1u8, Ordering::Relaxed);
+                    slice[self.reference_system.index(sidx, pidx, oidx, &self.domain)]
+                        .store(1u8, Ordering::Relaxed);
                 });
 
                 slice
@@ -651,7 +657,7 @@ impl<'a> RemoteHDT<'a> {
             },
         ) {
             Ok(data) => Ok(data),
-            Err(error) => return Err(String::from(error.to_string())), // TODO: fix this error message
+            Err(error) => return Err(String::from("Error creating the array")),
         }
     }
 
