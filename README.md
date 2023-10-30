@@ -1,3 +1,37 @@
+### Installation
+
+<details markdown="block">
+<summary>Instructions</summary>
+
+#### Official releases
+
+You can download a binary from the [latest release](https://github.com/weso/RemoteHDT/releases/latest) page.
+
+#### Compiling from source
+
+`shex-rs` has been implemented in Rust and is compiled using [cargo](https://doc.rust-lang.org/cargo/). The command `cargo run` can be used to compile and run locally the code.
+
+#### Docker
+
+TBD
+
+</details>
+
+### Usage
+
+#### Validate an example
+
+The folder `examples` contains several example files.
+
+##### Serialize a concrete RDF dataset
+
+```
+wget https://github.com/weso/RemoteHDT/blob/master/resources/1-lubm.ttl
+remote-hdt --rdf 1-lubm.ttl --serialize
+```
+
+---
+
 This project contains an exploration on ways to replicate [HDT](https://www.rdfhdt.org/) using [ZARR](https://zarr-specs.readthedocs.io/).
 
 1. We have to be able to import data from RDF dumps
