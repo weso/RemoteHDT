@@ -1,4 +1,5 @@
 [package]
+authors = [ "Ángel Iglesias Préstamo <angel.iglesias.prestamo@gmail.com>" ]
 name = "remote-hdt"
 version = "0.0.1"
 edition = "2021"
@@ -8,3 +9,9 @@ zarr3 = { git = "https://github.com/clbarnes/zarr3-rs.git" }
 rdf-rs = { path = "./rdf-rs" }
 sophia = { version = "0.8.0-alpha.2" }
 ndarray = { version = "0.15.6", features = [ "rayon" ] }
+clap = { version = "4.1.8", features = ["derive"] }
+
+[profile.release]
+codegen-units = 1
+opt-level = 3
+lto = "thin"

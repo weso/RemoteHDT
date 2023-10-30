@@ -72,6 +72,46 @@ pub struct RemoteHDTBuilder<'a> {
     domain: Domain,
 }
 
+pub trait ChunkEngine<'a> {
+    fn get_chunk(
+        &self,
+        array: Array<'a, FileSystemStore, u8>,
+        term: Field,
+        reference_system: &ReferenceSystem,
+    ) -> Result<ArcArrayD<u8>, String> {
+        match term {
+            Field::Subject(term) => match reference_system {
+                ReferenceSystem::SPO => self.get_first_term(array, term),
+                ReferenceSystem::SOP => todo!(),
+                ReferenceSystem::PSO => todo!(),
+                ReferenceSystem::POS => todo!(),
+                ReferenceSystem::OSP => todo!(),
+                ReferenceSystem::OPS => todo!(),
+            },
+            Field::Predicate(term) => todo!(),
+            Field::Object(term) => todo!(),
+        }
+    }
+
+    fn get_first_term(
+        &self,
+        array: Array<'a, FileSystemStore, u8>,
+        term: usize,
+    ) -> Result<ArcArrayD<u8>, String> {
+        match array.read_chunk(&smallvec![term as u64, 0, 0]) {
+            Ok(option) => match option {
+                Some(arr) => Ok(arr),                 // TODO: fix this
+                None => return Err(String::from("")), // TODO: fix this
+            },
+            Err(_) => Err(String::from("")), // TODO: fix this
+        }
+    }
+
+    fn get_subject(&self, subject: usize) -> Result<ArcArrayD<u8>, String>;
+    fn get_predicate(&self, predicate: usize) -> Result<ArcArray3, String>;
+    fn get_object(&self, object: usize) -> Result<ArcArray3, String>;
+}
+
 pub trait Engine {
     fn get(
         &self,
@@ -771,6 +811,44 @@ impl Engine for RemoteHDT<'_> {
 
     fn get_object(&self, index: usize) -> Result<ArcArray3, String> {
         self.get(&self.array, Field::Object(index), &self.reference_system)
+    }
+}
+
+impl ChunkEngine<'_> for RemoteHDT<'_> {
+    fn get_subject(&self, index: usize) -> Result<ArcArrayD<u8>, String> {
+        // 1. First, we open the File System for us to retrieve the ZARR array
+        let path = match PathBuf::from_str(self.zarr_path) {
+            Ok(path) => path,
+            Err(_) => return Err(String::from("Error opening the Path for the ZARR project")),
+        };
+
+        let store = match FileSystemStore::open(path) {
+            Ok(store) => store,
+            Err(_) => return Err(String::from("Error opening the File System Store")),
+        };
+
+        // 2. We create the NodeKey from the ArrayName
+        let key = match NodeKey::from_str(self.array_name) {
+            Ok(key) => key,
+            Err(_) => return Err(String::from("Error creating NodeKey from the ArrayName")),
+        };
+
+        // 3. We import the Array from the FileSystemStore that we have created
+        let arr: Array<'_, FileSystemStore, u8> = match Array::from_store(&store, key) {
+            Ok(arr) => arr,
+            Err(_) => return Err(String::from("Error importing Array from store")),
+        };
+
+        self.get_chunk(arr, Field::Subject(index), &self.reference_system)
+    }
+
+    // TODO: the current implementation works for SELECT *, but what if we SELECT predicate?
+    fn get_predicate(&self, index: usize) -> Result<ArcArray3, String> {
+        todo!()
+    }
+
+    fn get_object(&self, index: usize) -> Result<ArcArray3, String> {
+        todo!()
     }
 }
 

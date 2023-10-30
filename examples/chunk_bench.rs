@@ -1,16 +1,14 @@
-use remote_hdt::remote_hdt::{Engine, RemoteHDTBuilder};
+use remote_hdt::remote_hdt::{ChunkEngine, RemoteHDTBuilder};
 use std::time::Instant;
 
-const BENCHMARKS: [&str; 1] = ["10-lubm"];
+const BENCHMARKS: [&str; 1] = ["1-lubm"];
 
 fn main() {
     let path = format!("{}.zarr", BENCHMARKS[0]);
     let remote_hdt = RemoteHDTBuilder::new(path.as_str())
         .reference_system(remote_hdt::remote_hdt::ReferenceSystem::SPO)
         .array_name("array_name")
-        .build()
-        .parse()
-        .unwrap();
+        .build();
 
     let before = Instant::now();
 
