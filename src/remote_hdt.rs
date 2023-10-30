@@ -657,7 +657,7 @@ impl<'a> RemoteHDT<'a> {
             },
         ) {
             Ok(data) => Ok(data),
-            Err(error) => return Err(String::from("Error creating the array")),
+            Err(_) => return Err(String::from("Error creating the array")),
         }
     }
 
