@@ -3,7 +3,7 @@ use rdf_xml::RdfXml;
 use sophia::api::prelude::TripleParser;
 use sophia::api::serializer::TripleSerializer;
 use sophia::api::source::TripleSource;
-use sophia::inmem::graph::FastGraph;
+use sophia::inmem::graph::LightGraph;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use turtle::Turtle;
@@ -13,14 +13,14 @@ mod rdf_xml;
 mod turtle;
 
 pub struct RdfParser {
-    pub graph: FastGraph,
+    pub graph: LightGraph,
 }
 
 pub struct RdfSerializer;
 
 trait Backend<'a, P: TripleParser<BufReader<File>>, F: TripleSerializer> {
-    fn parse(&self, path: &str) -> Result<FastGraph, String> {
-        let mut graph = FastGraph::new();
+    fn parse(&self, path: &str) -> Result<LightGraph, String> {
+        let mut graph = LightGraph::new();
 
         let reader = BufReader::new(match File::open(path) {
             Ok(file) => file,
@@ -37,7 +37,7 @@ trait Backend<'a, P: TripleParser<BufReader<File>>, F: TripleSerializer> {
         }
     }
 
-    fn format(&self, path: &str, graph: FastGraph) -> Result<(), String> {
+    fn format(&self, path: &str, graph: LightGraph) -> Result<(), String> {
         let file = File::create(path).unwrap();
         let writer = BufWriter::new(file);
         let mut formatter = self.concrete_formatter(writer);
@@ -74,7 +74,7 @@ impl RdfParser {
 }
 
 impl RdfSerializer {
-    pub fn serialize(path: &str, graph: FastGraph) -> Result<(), String> {
+    pub fn serialize(path: &str, graph: LightGraph) -> Result<(), String> {
         match path.split('.').last() {
             Some("nt") => NTriples.format(path, graph),
             Some("ttl") => Turtle.format(path, graph),

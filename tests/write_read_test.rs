@@ -1,6 +1,10 @@
 use std::fs::remove_dir_all;
 
-use remote_hdt::remote_hdt::{ArcArray3, ReferenceSystem, RemoteHDTBuilder};
+use ndarray::{ArcArray, Ix3};
+use remote_hdt::{
+    reference_system::ReferenceSystem,
+    remote_hdt::{RemoteHDTBuilder, ZarrArray},
+};
 
 fn before() {
     let _ = remove_dir_all("root.zarr");
@@ -15,6 +19,7 @@ fn write_read_test_spo() {
     before();
 
     let _ = RemoteHDTBuilder::new("root.zarr")
+        .unwrap()
         .reference_system(ReferenceSystem::SPO)
         .rdf_path("resources/rdf.nt")
         .array_name("array_name")
@@ -22,7 +27,7 @@ fn write_read_test_spo() {
         .serialize()
         .unwrap();
 
-    let expected = ArcArray3::from_shape_vec(
+    let expected = ZarrArray::from_shape_vec(
         (4, 8, 9),
         vec![
             1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -40,12 +45,13 @@ fn write_read_test_spo() {
     .unwrap();
 
     let actual = RemoteHDTBuilder::new("root.zarr")
+        .unwrap()
         .reference_system(ReferenceSystem::SPO)
         .array_name("array_name")
         .build()
-        .parse()
+        .load()
         .unwrap()
-        .get_array()
+        .into_dimensionality::<Ix3>()
         .unwrap();
 
     assert_eq!(actual, expected);
@@ -58,6 +64,7 @@ fn write_read_test_pso() {
     before();
 
     let _ = RemoteHDTBuilder::new("root.zarr")
+        .unwrap()
         .reference_system(ReferenceSystem::PSO)
         .rdf_path("resources/rdf.nt")
         .array_name("array_name")
@@ -65,7 +72,7 @@ fn write_read_test_pso() {
         .serialize()
         .unwrap();
 
-    let expected = ArcArray3::from_shape_vec(
+    let expected = ArcArray::<u8, Ix3>::from_shape_vec(
         (8, 4, 9),
         vec![
             1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
@@ -83,12 +90,13 @@ fn write_read_test_pso() {
     .unwrap();
 
     let actual = RemoteHDTBuilder::new("root.zarr")
+        .unwrap()
         .reference_system(ReferenceSystem::PSO)
         .array_name("array_name")
         .build()
-        .parse()
+        .load()
         .unwrap()
-        .get_array()
+        .into_dimensionality::<Ix3>()
         .unwrap();
 
     assert_eq!(actual, expected);
