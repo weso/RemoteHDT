@@ -84,6 +84,10 @@ impl<'a> RemoteHDTBuilder<'a> {
 
 impl<'a> RemoteHDT<'a> {
     pub fn serialize(self) -> Result<Self, Box<dyn Error>> {
+        // Create a group and write metadata to filesystem
+        let group = zarrs::group::GroupBuilder::new().build(self.store.clone(), "/group")?;
+        group.store_metadata()?;
+
         // 3. Import the RDF dump using `rdf-rs`
         let graph = RdfParser::new(self.rdf_path)?.graph;
 

@@ -13,7 +13,6 @@ fn main() {
 
     let before = Instant::now();
 
-    let _ = remote_hdt.get_predicate(0);
-
+    println!("{:?}", remote_hdt.get_subject(0));
     println!("Elapsed time: {:.2?}", before.elapsed())
 }

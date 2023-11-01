@@ -6,7 +6,7 @@ use zarrs::{array::Array, array_subset::ArraySubset, storage::ReadableWritableSt
 use super::EngineStrategy;
 
 impl<'a> EngineStrategy for Array<dyn ReadableWritableStorageTraits> {
-    fn get_subject(&self, index: usize) -> Result<ArcArray<u8, IxDyn>, Box<dyn Error>> {
+    fn get_subject(&self, index: usize) -> Result<ArcArray<u64, IxDyn>, Box<dyn Error>> {
         Ok(self
             .par_retrieve_array_subset_ndarray(&ArraySubset::new_with_start_end_inc(
                 vec![index as u64, 0],
@@ -16,7 +16,7 @@ impl<'a> EngineStrategy for Array<dyn ReadableWritableStorageTraits> {
     }
 
     // TODO: the current implementation works for SELECT *, but what if we SELECT predicate?
-    fn get_predicate(&self, index: usize) -> Result<ArcArray<u8, IxDyn>, Box<dyn Error>> {
+    fn get_predicate(&self, index: usize) -> Result<ArcArray<u64, IxDyn>, Box<dyn Error>> {
         Ok(self
             .par_retrieve_array_subset_ndarray(&ArraySubset::new_with_start_end_inc(
                 vec![0, index as u64],
@@ -25,7 +25,7 @@ impl<'a> EngineStrategy for Array<dyn ReadableWritableStorageTraits> {
             .into()) // TODO: Improve Errors here :D
     }
 
-    fn get_object(&self, index: usize) -> Result<ArcArray<u8, IxDyn>, Box<dyn Error>> {
+    fn get_object(&self, index: usize) -> Result<ArcArray<u64, IxDyn>, Box<dyn Error>> {
         unimplemented!()
     }
 }
