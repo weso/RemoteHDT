@@ -7,11 +7,11 @@ fn main() {
     let remote_hdt = RemoteHDTBuilder::new(format!("{}.zarr", BENCHMARKS[0]).as_str())
         .unwrap()
         .build()
-        .parse()
+        .load()
         .unwrap();
 
     let before = Instant::now();
 
-    println!("{:?}", remote_hdt.get_subject(0));
+    println!("{:?}", remote_hdt.get_predicate(vec![0]));
     println!("Elapsed time: {:.2?}", before.elapsed())
 }

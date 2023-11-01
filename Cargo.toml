@@ -5,13 +5,14 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-zarrs = { git = "https://github.com/LDeakin/zarrs.git", default-features = false, features = ["ndarray"]}
+zarrs = { git = "https://github.com/LDeakin/zarrs.git", default-features = false}
 rdf-rs = { path = "./rdf-rs" }
 sophia = { version = "0.8.0-alpha.2" }
-ndarray = { version = "0.15.6", features = [ "rayon" ] }
 clap = { version = "4.1.8", features = ["derive"] }
 serde_json = "1.0.108"
 rayon = "1.8.0"
+thiserror = "1.0.50"
+nalgebra-sparse = "0.9.0"
 
 [profile.release]
 codegen-units = 1

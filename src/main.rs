@@ -1,6 +1,5 @@
 use clap::Parser;
-use remote_hdt::remote_hdt::RemoteHDTBuilder;
-use std::error::Error;
+use remote_hdt::remote_hdt::{RemoteHDTBuilder, RemoteHDTResult};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -14,7 +13,7 @@ struct Args {
     zarr: String,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> RemoteHDTResult<()> {
     let args: Args = Args::parse();
 
     RemoteHDTBuilder::new(&args.zarr)?

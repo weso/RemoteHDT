@@ -1,12 +1,11 @@
-use std::error::Error;
-
-use ndarray::{ArcArray, IxDyn};
+use crate::{error::EngineError, remote_hdt::ZarrArray};
 
 pub mod array_engine;
-pub mod chunk_engine;
+
+pub type EngineResult = Result<ZarrArray, EngineError>;
 
 pub trait EngineStrategy {
-    fn get_subject(&self, index: usize) -> Result<ArcArray<u64, IxDyn>, Box<dyn Error>>;
-    fn get_predicate(&self, index: usize) -> Result<ArcArray<u64, IxDyn>, Box<dyn Error>>;
-    fn get_object(&self, index: usize) -> Result<ArcArray<u64, IxDyn>, Box<dyn Error>>;
+    fn get_subject(&self, indices: Vec<usize>) -> EngineResult;
+    fn get_predicate(&self, indices: Vec<usize>) -> EngineResult;
+    fn get_object(&self, indices: usize) -> EngineResult;
 }

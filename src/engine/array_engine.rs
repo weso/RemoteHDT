@@ -1,20 +1,45 @@
-use std::error::Error;
+use nalgebra_sparse::ops::serial::spmm_csr_prealloc;
+use nalgebra_sparse::ops::Op::NoOp;
+use nalgebra_sparse::{CooMatrix, CsrMatrix};
 
-use ndarray::{ArcArray, ArcArray1, Array2, Axis, IxDyn};
+use crate::remote_hdt::ZarrArray;
 
-use super::EngineStrategy;
+use super::{EngineResult, EngineStrategy};
 
-impl EngineStrategy for ArcArray<u8, IxDyn> {
-    fn get_subject(&self, index: usize) -> Result<ArcArray<u64, IxDyn>, Box<dyn Error>> {
-        unimplemented!()
+impl EngineStrategy for ZarrArray {
+    fn get_subject(&self, indices: Vec<usize>) -> EngineResult {
+        let mut selection = CooMatrix::zeros(self.ncols(), self.nrows());
+        indices
+            .iter()
+            .for_each(|&index| selection.push(index, index, 1));
+        let mut ans = ZarrArray::zeros(self.ncols(), self.ncols());
+        let _ = spmm_csr_prealloc(
+            1,
+            &mut ans,
+            1,
+            NoOp(&CsrMatrix::from(&selection)),
+            NoOp(&self),
+        );
+        Ok(ans)
     }
 
-    // TODO: the current implementation works for SELECT *, but what if we SELECT predicate?
-    fn get_predicate(&self, index: usize) -> Result<ArcArray<u64, IxDyn>, Box<dyn Error>> {
-        unimplemented!()
+    fn get_predicate(&self, indices: Vec<usize>) -> EngineResult {
+        let mut selection = CooMatrix::zeros(self.ncols(), self.nrows());
+        indices
+            .iter()
+            .for_each(|&index| selection.push(index, index, 1));
+        let mut ans = ZarrArray::zeros(self.nrows(), self.nrows());
+        let _ = spmm_csr_prealloc(
+            1,
+            &mut ans,
+            1,
+            NoOp(&self),
+            NoOp(&CsrMatrix::from(&selection)),
+        );
+        Ok(ans)
     }
 
-    fn get_object(&self, index: usize) -> Result<ArcArray<u64, IxDyn>, Box<dyn Error>> {
+    fn get_object(&self, index: usize) -> EngineResult {
         unimplemented!()
     }
 }

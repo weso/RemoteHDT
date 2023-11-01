@@ -9,7 +9,7 @@ fn main() {
     let _ = RemoteHDTBuilder::new(format!("{}.zarr", BENCHMARKS[0]).as_str())
         .unwrap()
         .build()
-        .parse();
+        .load();
 
     println!("Elapsed time: {:.2?}", before.elapsed())
 }

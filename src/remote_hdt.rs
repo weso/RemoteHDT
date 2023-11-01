@@ -1,8 +1,8 @@
-use ndarray::parallel::prelude::IntoParallelRefIterator;
-use ndarray::parallel::prelude::ParallelIterator;
-use ndarray::IxDyn;
-use ndarray::{ArcArray, Ix3};
+use nalgebra_sparse::CooMatrix;
+use nalgebra_sparse::CsrMatrix;
 use rayon::prelude::IndexedParallelIterator;
+use rayon::prelude::IntoParallelRefIterator;
+use rayon::prelude::ParallelIterator;
 use rdf_rs::Graph;
 use rdf_rs::RdfParser;
 use rdf_rs::SimpleTriple;
@@ -10,10 +10,9 @@ use serde_json::Map;
 use sophia::api::term::CmpTerm;
 use sophia::api::term::Term;
 use sophia::term::ArcTerm;
-use std::error::Error;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use zarrs::array::Array;
@@ -21,12 +20,14 @@ use zarrs::array::ArrayBuilder;
 use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
-use zarrs::array_subset::ArraySubset;
+use zarrs::group::GroupBuilder;
 use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::ReadableWritableStorage;
-use zarrs::storage::ReadableWritableStorageTraits;
 
-pub type ZarrArray = ArcArray<u8, Ix3>;
+use crate::error::RemoteHDTError;
+
+pub type ZarrArray = CsrMatrix<u8>;
+pub type RemoteHDTResult<T> = Result<T, RemoteHDTError>;
 
 const ARRAY_NAME: &str = "/group/RemoteHDT";
 
@@ -41,17 +42,10 @@ pub struct RemoteHDTBuilder<'a> {
 }
 
 impl<'a> RemoteHDTBuilder<'a> {
-    pub fn new(zarr_path: &'a str) -> Result<Self, String> {
+    pub fn new(zarr_path: &'a str) -> RemoteHDTResult<Self> {
         // 1. First, we open the File System for us to store the ZARR project
-        let path = match PathBuf::from_str(zarr_path) {
-            Ok(path) => path,
-            Err(_) => return Err(String::from("Error opening the Path for the ZARR project")),
-        };
-
-        let store = match FilesystemStore::new(path) {
-            Ok(store) => Arc::new(store),
-            Err(_) => return Err(String::from("Error creating the File System Store")),
-        };
+        let path = PathBuf::from_str(zarr_path)?;
+        let store = Arc::new(FilesystemStore::new(path)?);
 
         // Set the minimally required fields of RemoteHDT
         Ok(RemoteHDTBuilder {
@@ -75,22 +69,22 @@ impl<'a> RemoteHDTBuilder<'a> {
 }
 
 impl<'a> RemoteHDT<'a> {
-    pub fn serialize(self) -> Result<Self, Box<dyn Error>> {
+    pub fn serialize(self) -> RemoteHDTResult<Self> {
         // Create a group and write metadata to filesystem
-        let group = zarrs::group::GroupBuilder::new().build(self.store.clone(), "/group")?;
+        let group = GroupBuilder::new().build(self.store.clone(), "/group")?;
         group.store_metadata()?;
 
         // 3. Import the RDF dump using `rdf-rs`
-        let graph = RdfParser::new(self.rdf_path)?.graph;
+        let graph = RdfParser::new(self.rdf_path).unwrap().graph; // TODO: remove unwrap
 
         // 4. Build the structure of the Array; as such, several parameters of it are
         // tweaked. Namely, the size of the array, the size of the chunks, the name
         // of the different dimensions and the default values
         let array = ArrayBuilder::new(
             vec![graph.subjects().len() as u64, graph.objects().len() as u64].into(),
-            DataType::UInt64,
+            DataType::Float32,
             vec![1, graph.objects().len() as u64].into(),
-            FillValue::from(0u64),
+            FillValue::from(0f32),
         )
         .dimension_names(Some(vec![
             DimensionName::new("Subject"),
@@ -138,32 +132,29 @@ impl<'a> RemoteHDT<'a> {
         // the region is written provided the aforementioned data and offset
         graph
             .subjects()
-            .par_iter() // TODO: Parallelize this
+            .par_iter()
             .enumerate()
             .for_each(|(i, term)| {
-                let chunk_index = vec![i as u64, 0];
-                let _ = array.store_chunk_elements(
-                    &chunk_index,
-                    self.create_array(
-                        graph
-                            .triples()
-                            .par_iter()
-                            .filter(|triple| term == &triple.subject)
-                            .collect(),
-                        &graph,
-                    )
-                    .unwrap() // TODO: remove unwrap
-                    .as_slice(),
+                let ans = self.create_array(
+                    graph
+                        .triples()
+                        .par_iter()
+                        .filter(|triple| term == &triple.subject)
+                        .collect(),
+                    &graph,
                 );
+                if ans.is_ok() {
+                    let _ = array.store_chunk_elements(&vec![i as u64, 0], ans.unwrap().as_slice());
+                }
             });
 
         Ok(self)
     }
 
-    fn create_array(&self, triples: Vec<&SimpleTriple>, graph: &Graph) -> Result<Vec<u64>, String> {
-        let slice: Vec<AtomicU64> = vec![0; graph.objects().len()]
+    fn create_array(&self, triples: Vec<&SimpleTriple>, graph: &Graph) -> RemoteHDTResult<Vec<u8>> {
+        let slice: Vec<AtomicU8> = vec![0; graph.objects().len()]
             .par_iter()
-            .map(|&n| AtomicU64::new(n))
+            .map(|&n| AtomicU8::new(n))
             .collect();
 
         triples.par_iter().for_each(|triple| {
@@ -178,7 +169,7 @@ impl<'a> RemoteHDT<'a> {
                 .position_any(|elem| elem == &triple.object)
                 .unwrap();
 
-            slice[oidx].store(pidx as u64, Ordering::Relaxed);
+            slice[oidx].store(pidx as u8, Ordering::Relaxed);
         });
 
         Ok(slice
@@ -187,16 +178,9 @@ impl<'a> RemoteHDT<'a> {
             .collect())
     }
 
-    pub fn parse(&self) -> Result<Array<dyn ReadableWritableStorageTraits>, Box<dyn Error>> {
-        Ok(Array::new(self.store.clone(), ARRAY_NAME)?) // TODO: improve this
-    }
-
-    pub fn load(&mut self) -> Result<ArcArray<u8, IxDyn>, String> {
+    pub fn load(&mut self) -> RemoteHDTResult<ZarrArray> {
         // 3. We import the Array from the FileSystemStore that we have created
-        let arr = match self.parse() {
-            Ok(arr) => arr,
-            Err(_) => return Err(String::from("Error importing Array from store")),
-        };
+        let arr = Array::new(self.store.clone(), ARRAY_NAME)?;
 
         // 4. We get the attributes so we can obtain some values that we will need
         let attributes = arr.attributes();
@@ -229,13 +213,21 @@ impl<'a> RemoteHDT<'a> {
             .collect::<Vec<CmpTerm<ArcTerm>>>();
 
         // 5. We read the region from the Array we have just created
-        // TODO: restrict ourselves to a certain region, not to the whole dump :(
-        match arr.par_retrieve_array_subset_ndarray(&ArraySubset::new_with_shape(vec![
-            subjects.len() as u64,
-            objects.len() as u64,
-        ])) {
-            Ok(region) => Ok(region.into()),
-            Err(_) => Err(String::from("Error loading the array")),
-        }
+        let mut matrix = CooMatrix::new(subjects.len(), objects.len());
+        (0..subjects.len()).for_each(|i| {
+            arr.retrieve_chunk(&[i as u64, 0])
+                .unwrap()
+                .iter()
+                .enumerate()
+                .for_each(|(j, value)| {
+                    if value != &0u8 {
+                        matrix.push(i, j, value.to_owned());
+                    }
+                })
+        });
+
+        println!("{:?}", matrix);
+
+        Ok(CsrMatrix::from(&matrix))
     }
 }
