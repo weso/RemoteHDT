@@ -2,7 +2,7 @@ use ntriples::NTriples;
 use rdf_xml::RdfXml;
 use rio_api::formatter::TriplesFormatter;
 use rio_api::parser::TriplesParser;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -13,34 +13,46 @@ mod rdf_xml;
 mod turtle;
 
 pub struct Graph {
-    triples: Vec<SimpleTriple>,
+    triples: HashMap<String, Vec<(String, String)>>,
     subjects: HashSet<String>,
-    predicates: HashSet<String>,
-    objects: HashSet<String>,
+    predicates: HashMap<String, usize>,
+    objects: HashMap<String, usize>,
 }
 
 impl Graph {
     pub fn new() -> Self {
         Graph {
-            triples: Vec::<SimpleTriple>::new(),
+            triples: HashMap::<String, Vec<(String, String)>>::new(),
             subjects: HashSet::<String>::new(),
-            predicates: HashSet::<String>::new(),
-            objects: HashSet::<String>::new(),
+            predicates: HashMap::<String, usize>::new(),
+            objects: HashMap::<String, usize>::new(),
         }
     }
 
     pub fn insert(&mut self, subject: String, predicate: String, object: String) {
-        self.triples.push(SimpleTriple::new(
-            subject.to_owned(),
-            predicate.to_owned(),
-            object.to_owned(),
-        ));
+        if self.subjects.contains(&subject) {
+            self.triples
+                .get_mut(&subject)
+                .unwrap()
+                .push((predicate.to_owned(), object.to_owned()));
+        } else {
+            self.triples.insert(
+                subject.to_owned(),
+                vec![(predicate.to_owned(), object.to_owned())],
+            );
+        }
+
         self.subjects.insert(subject);
-        self.predicates.insert(predicate);
-        self.objects.insert(object);
+
+        if !self.predicates.contains_key(&predicate) {
+            self.predicates.insert(predicate, self.predicates.len());
+        }
+        if !self.objects.contains_key(&object) {
+            self.objects.insert(object, self.objects.len());
+        }
     }
 
-    pub fn triples(&self) -> Vec<SimpleTriple> {
+    pub fn triples(&self) -> HashMap<String, Vec<(String, String)>> {
         self.triples.to_owned()
     }
 
@@ -48,29 +60,12 @@ impl Graph {
         Vec::from_iter(self.subjects.to_owned())
     }
 
-    pub fn predicates(&self) -> Vec<String> {
-        Vec::from_iter(self.predicates.to_owned())
+    pub fn predicates(&self) -> HashMap<String, usize> {
+        self.predicates.to_owned()
     }
 
-    pub fn objects(&self) -> Vec<String> {
-        Vec::from_iter(self.objects.to_owned())
-    }
-}
-
-#[derive(Clone)]
-pub struct SimpleTriple {
-    pub subject: String,
-    pub predicate: String,
-    pub object: String,
-}
-
-impl SimpleTriple {
-    pub fn new(subject: String, predicate: String, object: String) -> Self {
-        SimpleTriple {
-            subject,
-            predicate,
-            object,
-        }
+    pub fn objects(&self) -> HashMap<String, usize> {
+        self.objects.to_owned()
     }
 }
 

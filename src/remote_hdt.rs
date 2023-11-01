@@ -1,15 +1,11 @@
 use nalgebra_sparse::CooMatrix;
 use nalgebra_sparse::CsrMatrix;
-use rayon::prelude::IndexedParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
+use rayon::prelude::ParallelBridge;
 use rayon::prelude::ParallelIterator;
 use rdf_rs::Graph;
 use rdf_rs::RdfParser;
-use rdf_rs::SimpleTriple;
 use serde_json::Map;
-use sophia::api::term::CmpTerm;
-use sophia::api::term::Term;
-use sophia::term::ArcTerm;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
@@ -82,9 +78,9 @@ impl<'a> RemoteHDT<'a> {
         // of the different dimensions and the default values
         let array = ArrayBuilder::new(
             vec![graph.subjects().len() as u64, graph.objects().len() as u64].into(),
-            DataType::Float32,
+            DataType::UInt8,
             vec![1, graph.objects().len() as u64].into(),
-            FillValue::from(0f32),
+            FillValue::from(0u8),
         )
         .dimension_names(Some(vec![
             DimensionName::new("Subject"),
@@ -93,7 +89,7 @@ impl<'a> RemoteHDT<'a> {
         .attributes({
             let mut attributes = Map::new();
             attributes.insert(
-                "subjects".to_string(), // TODO: This is not working properly
+                "subjects".to_string(),
                 graph
                     .subjects()
                     .par_iter()
@@ -106,7 +102,7 @@ impl<'a> RemoteHDT<'a> {
                 graph
                     .predicates()
                     .par_iter()
-                    .map(|predicate| predicate.to_owned())
+                    .map(|predicate| predicate.0.to_owned())
                     .collect::<Vec<_>>()
                     .into(),
             );
@@ -115,7 +111,7 @@ impl<'a> RemoteHDT<'a> {
                 graph
                     .objects()
                     .par_iter()
-                    .map(|object| object.to_owned())
+                    .map(|object| object.0.to_owned())
                     .collect::<Vec<_>>()
                     .into(),
             );
@@ -131,18 +127,12 @@ impl<'a> RemoteHDT<'a> {
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
         graph
-            .subjects()
-            .par_iter()
+            .triples()
+            .iter()
             .enumerate()
-            .for_each(|(i, term)| {
-                let ans = self.create_array(
-                    graph
-                        .triples()
-                        .par_iter()
-                        .filter(|triple| term == &triple.subject)
-                        .collect(),
-                    &graph,
-                );
+            .par_bridge()
+            .for_each(|(i, (_, values))| {
+                let ans = self.create_array(values, &graph);
                 if ans.is_ok() {
                     let _ = array.store_chunk_elements(&vec![i as u64, 0], ans.unwrap().as_slice());
                 }
@@ -151,24 +141,19 @@ impl<'a> RemoteHDT<'a> {
         Ok(self)
     }
 
-    fn create_array(&self, triples: Vec<&SimpleTriple>, graph: &Graph) -> RemoteHDTResult<Vec<u8>> {
+    fn create_array(
+        &self,
+        triples: &Vec<(String, String)>,
+        graph: &Graph,
+    ) -> RemoteHDTResult<Vec<u8>> {
         let slice: Vec<AtomicU8> = vec![0; graph.objects().len()]
             .par_iter()
             .map(|&n| AtomicU8::new(n))
             .collect();
 
-        triples.par_iter().for_each(|triple| {
-            let pidx = graph
-                .predicates()
-                .par_iter()
-                .position_any(|elem| elem == &triple.predicate)
-                .unwrap();
-            let oidx = graph
-                .objects()
-                .par_iter()
-                .position_any(|elem| elem == &triple.object)
-                .unwrap();
-
+        triples.par_iter().for_each(|(predicate, object)| {
+            let pidx = graph.predicates().get(predicate).unwrap().to_owned();
+            let oidx = graph.objects().get(object).unwrap().to_owned();
             slice[oidx].store(pidx as u8, Ordering::Relaxed);
         });
 
@@ -178,7 +163,7 @@ impl<'a> RemoteHDT<'a> {
             .collect())
     }
 
-    pub fn load(&mut self) -> RemoteHDTResult<ZarrArray> {
+    pub fn load(&mut self) -> RemoteHDTResult<(ZarrArray, Vec<String>, Vec<String>, Vec<String>)> {
         // 3. We import the Array from the FileSystemStore that we have created
         let arr = Array::new(self.store.clone(), ARRAY_NAME)?;
 
@@ -191,8 +176,8 @@ impl<'a> RemoteHDT<'a> {
             .as_array()
             .unwrap()
             .par_iter()
-            .map(|subject| subject.as_str().unwrap().into_term())
-            .collect::<Vec<CmpTerm<ArcTerm>>>();
+            .map(|subject| subject.as_str().unwrap().to_string())
+            .collect::<Vec<String>>();
 
         let predicates = attributes
             .get("predicates")
@@ -200,8 +185,8 @@ impl<'a> RemoteHDT<'a> {
             .as_array()
             .unwrap()
             .par_iter()
-            .map(|predicate| predicate.as_str().unwrap().into_term())
-            .collect::<Vec<CmpTerm<ArcTerm>>>();
+            .map(|predicate| predicate.as_str().unwrap().to_string())
+            .collect::<Vec<String>>();
 
         let objects = attributes
             .get("objects")
@@ -209,8 +194,8 @@ impl<'a> RemoteHDT<'a> {
             .as_array()
             .unwrap()
             .par_iter()
-            .map(|object| object.as_str().unwrap().into_term())
-            .collect::<Vec<CmpTerm<ArcTerm>>>();
+            .map(|object| object.as_str().unwrap().to_string())
+            .collect::<Vec<String>>();
 
         // 5. We read the region from the Array we have just created
         let mut matrix = CooMatrix::new(subjects.len(), objects.len());
@@ -226,8 +211,6 @@ impl<'a> RemoteHDT<'a> {
                 })
         });
 
-        println!("{:?}", matrix);
-
-        Ok(CsrMatrix::from(&matrix))
+        Ok((CsrMatrix::from(&matrix), subjects, predicates, objects))
     }
 }

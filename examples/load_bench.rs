@@ -1,7 +1,7 @@
 use remote_hdt::remote_hdt::RemoteHDTBuilder;
 use std::time::Instant;
 
-const BENCHMARKS: [&str; 1] = ["1-lubm"];
+const BENCHMARKS: [&str; 1] = ["10-lubm"];
 
 fn main() {
     let before = Instant::now();

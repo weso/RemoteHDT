@@ -7,7 +7,6 @@ edition = "2021"
 [dependencies]
 zarrs = { git = "https://github.com/LDeakin/zarrs.git", default-features = false}
 rdf-rs = { path = "./rdf-rs" }
-sophia = { version = "0.8.0-alpha.2" }
 clap = { version = "4.1.8", features = ["derive"] }
 serde_json = "1.0.108"
 rayon = "1.8.0"

@@ -6,6 +6,6 @@ pub type EngineResult = Result<ZarrArray, EngineError>;
 
 pub trait EngineStrategy {
     fn get_subject(&self, indices: Vec<usize>) -> EngineResult;
-    fn get_predicate(&self, indices: Vec<usize>) -> EngineResult;
-    fn get_object(&self, indices: usize) -> EngineResult;
+    fn get_predicate(&self, indices: usize) -> EngineResult;
+    fn get_object(&self, indices: Vec<usize>) -> EngineResult;
 }

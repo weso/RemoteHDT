@@ -23,7 +23,11 @@ impl EngineStrategy for ZarrArray {
         Ok(ans)
     }
 
-    fn get_predicate(&self, indices: Vec<usize>) -> EngineResult {
+    fn get_predicate(&self, index: usize) -> EngineResult {
+        unimplemented!()
+    }
+
+    fn get_object(&self, indices: Vec<usize>) -> EngineResult {
         let mut selection = CooMatrix::zeros(self.ncols(), self.nrows());
         indices
             .iter()
@@ -37,9 +41,5 @@ impl EngineStrategy for ZarrArray {
             NoOp(&CsrMatrix::from(&selection)),
         );
         Ok(ans)
-    }
-
-    fn get_object(&self, index: usize) -> EngineResult {
-        unimplemented!()
     }
 }
