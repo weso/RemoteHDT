@@ -18,7 +18,6 @@ fn write_read_test() {
     let _ = RemoteHDTBuilder::new("root.zarr")
         .unwrap()
         .rdf_path("resources/rdf.nt")
-        .array_name("array_name")
         .build()
         .serialize()
         .unwrap();
@@ -42,7 +41,6 @@ fn write_read_test() {
 
     let actual = RemoteHDTBuilder::new("root.zarr")
         .unwrap()
-        .array_name("array_name")
         .build()
         .load()
         .unwrap()

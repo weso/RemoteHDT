@@ -12,10 +12,6 @@ struct Args {
     /// Output Zarr directory
     #[arg(short, long, default_value = "root.zarr")]
     zarr: String,
-
-    /// Name of the Array to be created
-    #[arg(short, long, default_value = "array_name")]
-    array_name: String,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -23,7 +19,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     RemoteHDTBuilder::new(&args.zarr)?
         .rdf_path(&args.rdf)
-        .array_name(&args.array_name)
         .build()
         .serialize()?;
 

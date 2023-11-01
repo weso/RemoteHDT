@@ -8,7 +8,6 @@ fn main() {
 
     let _ = RemoteHDTBuilder::new(format!("{}.zarr", BENCHMARKS[0]).as_str())
         .unwrap()
-        .array_name("array_name")
         .build()
         .parse();
 

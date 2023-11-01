@@ -6,7 +6,6 @@ const BENCHMARKS: [&str; 1] = ["1-lubm"];
 fn main() {
     let remote_hdt = RemoteHDTBuilder::new(format!("{}.zarr", BENCHMARKS[0]).as_str())
         .unwrap()
-        .array_name("array_name")
         .build()
         .parse()
         .unwrap();

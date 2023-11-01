@@ -28,16 +28,16 @@ use zarrs::storage::ReadableWritableStorageTraits;
 
 pub type ZarrArray = ArcArray<u8, Ix3>;
 
+const ARRAY_NAME: &str = "/group/RemoteHDT";
+
 pub struct RemoteHDT<'a> {
     rdf_path: &'a str,
     store: ReadableWritableStorage<'static>,
-    array_name: &'a str,
 }
 
 pub struct RemoteHDTBuilder<'a> {
     rdf_path: &'a str,
     store: ReadableWritableStorage<'static>,
-    array_name: &'a str,
 }
 
 impl<'a> RemoteHDTBuilder<'a> {
@@ -57,7 +57,6 @@ impl<'a> RemoteHDTBuilder<'a> {
         Ok(RemoteHDTBuilder {
             rdf_path: Default::default(),
             store,
-            array_name: "array",
         })
     }
 
@@ -67,17 +66,10 @@ impl<'a> RemoteHDTBuilder<'a> {
         self
     }
 
-    pub fn array_name(mut self, array_name: &'a str) -> Self {
-        // Set the name of the array, and return the builder by value
-        self.array_name = array_name;
-        self
-    }
-
     pub fn build(self) -> RemoteHDT<'a> {
         RemoteHDT {
             rdf_path: self.rdf_path,
             store: self.store,
-            array_name: self.array_name,
         }
     }
 }
@@ -135,7 +127,7 @@ impl<'a> RemoteHDT<'a> {
             );
             attributes
         })
-        .build(self.store.clone(), "/group/array")?; // TODO: improve this?
+        .build(self.store.clone(), ARRAY_NAME)?;
 
         array.store_metadata()?;
 
@@ -196,7 +188,7 @@ impl<'a> RemoteHDT<'a> {
     }
 
     pub fn parse(&self) -> Result<Array<dyn ReadableWritableStorageTraits>, Box<dyn Error>> {
-        Ok(Array::new(self.store.clone(), "/group/array")?) // TODO: improve this
+        Ok(Array::new(self.store.clone(), ARRAY_NAME)?) // TODO: improve this
     }
 
     pub fn load(&mut self) -> Result<ArcArray<u8, IxDyn>, String> {

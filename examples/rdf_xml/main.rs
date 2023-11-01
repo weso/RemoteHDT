@@ -4,7 +4,6 @@ pub fn main() {
     let _ = RemoteHDTBuilder::new("root.zarr")
         .unwrap()
         .rdf_path("examples/rdf_xml/rdf.rdf")
-        .array_name("array_name")
         .build()
         .serialize();
 }
