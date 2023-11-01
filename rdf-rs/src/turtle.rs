@@ -1,18 +1,18 @@
-use sophia::turtle::parser::turtle::TurtleParser;
-use sophia::turtle::serializer::turtle::TurtleSerializer;
 use std::fs::File;
-use std::io::BufWriter;
+use std::io::{BufReader, BufWriter};
+
+use rio_turtle::{TurtleFormatter, TurtleParser};
 
 use super::Backend;
 
 pub(crate) struct Turtle;
 
-impl<'a> Backend<'a, TurtleParser, TurtleSerializer<BufWriter<File>>> for Turtle {
-    fn concrete_parser(&self) -> TurtleParser {
-        TurtleParser { base: None }
+impl<'a> Backend<'a, TurtleParser<BufReader<File>>, TurtleFormatter<BufWriter<File>>> for Turtle {
+    fn concrete_parser(&self, reader: BufReader<File>) -> TurtleParser<BufReader<File>> {
+        TurtleParser::new(reader, None)
     }
 
-    fn concrete_formatter(&self, writer: BufWriter<File>) -> TurtleSerializer<BufWriter<File>> {
-        TurtleSerializer::new(writer)
+    fn concrete_formatter(&self, writer: BufWriter<File>) -> TurtleFormatter<BufWriter<File>> {
+        TurtleFormatter::new(writer)
     }
 }
