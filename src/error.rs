@@ -5,6 +5,7 @@ use zarrs::array::ArrayError;
 use zarrs::array_subset::IncompatibleDimensionalityError;
 use zarrs::group::GroupCreateError;
 use zarrs::storage::store::FilesystemStoreCreateError;
+use zarrs::storage::store::HTTPStoreCreateError;
 use zarrs::storage::StorageError;
 
 #[derive(Error, Debug)]
@@ -23,6 +24,8 @@ pub enum RemoteHDTError {
     Storage(#[from] StorageError),
     #[error(transparent)]
     Array(#[from] ArrayError),
+    #[error(transparent)]
+    HTTPCreate(#[from] HTTPStoreCreateError),
 }
 
 #[derive(Error, Debug)]

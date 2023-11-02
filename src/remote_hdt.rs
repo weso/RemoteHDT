@@ -20,7 +20,8 @@ use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
 use zarrs::group::GroupBuilder;
 use zarrs::storage::store::FilesystemStore;
-use zarrs::storage::ReadableWritableStorage;
+use zarrs::storage::store::HTTPStore;
+use zarrs::storage::ReadableStorageTraits;
 
 use crate::error::RemoteHDTError;
 
@@ -29,63 +30,31 @@ pub type RemoteHDTResult<T> = Result<T, RemoteHDTError>;
 
 const ARRAY_NAME: &str = "/group/RemoteHDT";
 
-pub struct RemoteHDT<'a> {
-    rdf_path: &'a str,
-    store: ReadableWritableStorage<'static>,
+pub struct RemoteHDT {
     subjects: HashMap<String, usize>,
     predicates: HashMap<String, usize>,
     objects: HashMap<String, usize>,
 }
 
-pub struct RemoteHDTBuilder<'a> {
-    rdf_path: &'a str,
-    store: ReadableWritableStorage<'static>,
-    subjects: HashMap<String, usize>,
-    predicates: HashMap<String, usize>,
-    objects: HashMap<String, usize>,
-}
-
-impl<'a> RemoteHDTBuilder<'a> {
-    pub fn new(zarr_path: &'a str) -> RemoteHDTResult<Self> {
-        // 1. First, we open the File System for us to store the ZARR project
-        let path = PathBuf::from_str(zarr_path)?;
-        let store = Arc::new(FilesystemStore::new(path)?);
-
-        // Set the minimally required fields of RemoteHDT
-        Ok(RemoteHDTBuilder {
-            rdf_path: Default::default(),
-            store,
+impl RemoteHDT {
+    pub fn new() -> Self {
+        RemoteHDT {
             subjects: HashMap::new(),
             predicates: HashMap::new(),
             objects: HashMap::new(),
-        })
-    }
-
-    pub fn rdf_path(mut self, rdf_path: &'a str) -> Self {
-        // Set the RDF path for it to be serialized
-        self.rdf_path = rdf_path;
-        self
-    }
-
-    pub fn build(self) -> RemoteHDT<'a> {
-        RemoteHDT {
-            rdf_path: self.rdf_path,
-            store: self.store,
-            subjects: self.subjects,
-            predicates: self.predicates,
-            objects: self.objects,
         }
     }
-}
 
-impl<'a> RemoteHDT<'a> {
-    pub fn serialize(self) -> RemoteHDTResult<Self> {
+    pub fn serialize<'a>(&self, zarr_path: &'a str, rdf_path: &'a str) -> RemoteHDTResult<&Self> {
+        let path = PathBuf::from_str(zarr_path)?;
+        let store = Arc::new(FilesystemStore::new(path)?);
+
         // Create a group and write metadata to filesystem
-        let group = GroupBuilder::new().build(self.store.clone(), "/group")?;
+        let group = GroupBuilder::new().build(store.clone(), "/group")?;
         group.store_metadata()?;
 
         // 3. Import the RDF dump using `rdf-rs`
-        let graph = RdfParser::new(self.rdf_path).unwrap().graph; // TODO: remove unwrap
+        let graph = RdfParser::new(rdf_path).unwrap().graph; // TODO: remove unwrap
 
         // 4. Build the structure of the Array; as such, several parameters of it are
         // tweaked. Namely, the size of the array, the size of the chunks, the name
@@ -132,7 +101,7 @@ impl<'a> RemoteHDT<'a> {
             );
             attributes
         })
-        .build(self.store.clone(), ARRAY_NAME)?;
+        .build(store, ARRAY_NAME)?;
 
         array.store_metadata()?;
 
@@ -178,10 +147,22 @@ impl<'a> RemoteHDT<'a> {
             .collect())
     }
 
-    pub fn load(&mut self) -> RemoteHDTResult<ZarrArray> {
-        // 3. We import the Array from the FileSystemStore that we have created
-        let arr = Array::new(self.store.clone(), ARRAY_NAME)?;
+    pub fn load<'a>(&mut self, zarr_path: &'a str) -> RemoteHDTResult<ZarrArray> {
+        let store = Arc::new(FilesystemStore::new(zarr_path)?);
+        let arr = Array::new(store, ARRAY_NAME)?;
+        self.retrieve_data(arr)
+    }
 
+    pub fn connect<'a>(&mut self, url: &'a str) -> RemoteHDTResult<ZarrArray> {
+        let store = Arc::new(HTTPStore::new(url)?);
+        let arr = Array::new(store, ARRAY_NAME)?;
+        self.retrieve_data(arr)
+    }
+
+    fn retrieve_data<T: ReadableStorageTraits + ?Sized>(
+        &mut self,
+        arr: Array<T>,
+    ) -> RemoteHDTResult<ZarrArray> {
         // 4. We get the attributes so we can obtain some values that we will need
         let attributes = arr.attributes();
 

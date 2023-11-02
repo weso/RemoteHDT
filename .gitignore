@@ -2,3 +2,4 @@
 *.zarr
 Cargo.lock
 benches/*/*.nt
+!resources/root.zarr

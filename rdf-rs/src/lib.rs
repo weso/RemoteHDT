@@ -2,7 +2,7 @@ use ntriples::NTriples;
 use rdf_xml::RdfXml;
 use rio_api::formatter::TriplesFormatter;
 use rio_api::parser::TriplesParser;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};

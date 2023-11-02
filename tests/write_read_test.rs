@@ -1,7 +1,7 @@
 use std::fs::remove_dir_all;
 
 use nalgebra_sparse::{CooMatrix, CsrMatrix};
-use remote_hdt::remote_hdt::RemoteHDTBuilder;
+use remote_hdt::remote_hdt::RemoteHDT;
 
 fn before() {
     let _ = remove_dir_all("root.zarr");
@@ -15,18 +15,11 @@ fn after() {
 fn write_read_test() {
     before();
 
-    let _ = RemoteHDTBuilder::new("root.zarr")
-        .unwrap()
-        .rdf_path("resources/rdf.nt")
-        .build()
-        .serialize();
+    let mut remote_hdt = RemoteHDT::new();
 
-    let mut remote_hdt = RemoteHDTBuilder::new("root.zarr")
-        .unwrap()
-        .rdf_path("resources/rdf.nt")
-        .build();
+    let _ = remote_hdt.serialize("root.zarr", "resources/rdf.nt");
 
-    let actual = remote_hdt.load().unwrap();
+    let actual = remote_hdt.load("root.zarr").unwrap();
 
     let mut expected = CooMatrix::<u8>::new(4, 9);
     expected.push(

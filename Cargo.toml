@@ -5,7 +5,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-zarrs = { git = "https://github.com/LDeakin/zarrs.git", default-features = false}
+zarrs = { git = "https://github.com/LDeakin/zarrs.git", default-features = false, features = [ "http" ] }
 rdf-rs = { path = "./rdf-rs" }
 clap = { version = "4.1.8", features = ["derive"] }
 serde_json = "1.0.108"
