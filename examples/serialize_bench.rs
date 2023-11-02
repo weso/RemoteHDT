@@ -8,7 +8,7 @@ fn main() {
 
     let _ = RemoteHDTBuilder::new(format!("{}.zarr", BENCHMARKS[0]).as_str())
         .unwrap()
-        .rdf_path(format!("../lubm-uba-improved/out/{}.ttl", BENCHMARKS[0]).as_str())
+        .rdf_path(format!("resources/{}.ttl", BENCHMARKS[0]).as_str())
         .build()
         .serialize();
 
