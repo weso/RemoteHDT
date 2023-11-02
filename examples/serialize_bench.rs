@@ -7,10 +7,12 @@ const BENCHMARKS: [&str; 1] = ["1-lubm"];
 fn main() {
     let before = Instant::now();
 
-    let _ = RemoteHDT::new().serialize(
-        format!("{}.zarr", BENCHMARKS[0]).as_str(),
-        format!("resources/{}.ttl", BENCHMARKS[0]).as_str(),
-    );
+    let _ = RemoteHDT::new()
+        .serialize(
+            format!("{}.zarr", BENCHMARKS[0]).as_str(),
+            format!("../lubm-uba-improved/out/{}.ttl", BENCHMARKS[0]).as_str(),
+        )
+        .unwrap();
 
     println!("Elapsed time: {:.2?}", before.elapsed())
 }

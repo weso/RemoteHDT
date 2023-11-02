@@ -2,16 +2,16 @@
   "node_type": "array",
   "zarr_format": 3,
   "shape": [
-    4,
-    9
+    18,
+    18
   ],
-  "data_type": "uint8",
+  "data_type": "uint32",
   "chunk_grid": {
     "name": "regular",
     "configuration": {
       "chunk_shape": [
         1,
-        9
+        18
       ]
     }
   },
@@ -32,31 +32,31 @@
   ],
   "attributes": {
     "subjects": [
-      "0--><http://example.org/warrington>",
-      "1--><http://example.org/alan>",
-      "2--><http://example.org/bombe>",
-      "3--><http://example.org/wilmslow>"
+      "<http://example.org/warrington>-->5",
+      "<http://example.org/bombe>-->15",
+      "<http://example.org/alan>-->1",
+      "<http://example.org/wilmslow>-->7"
     ],
     "predicates": [
-      "2--><http://example.org/placeOfBirth>",
-      "8--><http://example.org/manufacturer>",
-      "3--><http://example.org/placeOfDeath>",
-      "5--><http://example.org/employer>",
-      "1--><http://example.org/instanceOf>",
-      "4--><http://example.org/dateOfBirth>",
-      "6--><http://example.org/country>",
-      "7--><http://example.org/discoverer>"
+      "<http://example.org/dateOfBirth>-->8",
+      "<http://example.org/placeOfDeath>-->6",
+      "<http://example.org/country>-->12",
+      "<http://example.org/discoverer>-->16",
+      "<http://example.org/placeOfBirth>-->4",
+      "<http://example.org/manufacturer>-->18",
+      "<http://example.org/employer>-->10",
+      "<http://example.org/instanceOf>-->2"
     ],
     "objects": [
-      "2--><http://example.org/wilmslow>",
-      "4--><http://example.org/GCHQ>",
-      "1--><http://example.org/warrington>",
-      "5--><http://example.org/uk>",
-      "6--><http://example.org/town>",
-      "7--><http://example.org/alan>",
-      "8--><http://example.org/computer>",
-      "0--><http://example.org/Human>",
-      "3-->\"1912-06-23\"^^<http://www.w3.org/2001/XMLSchemadate>"
+      "<http://example.org/alan>-->1",
+      "<http://example.org/GCHQ>-->11",
+      "<http://example.org/Human>-->3",
+      "\"1912-06-23\"^^<http://www.w3.org/2001/XMLSchemadate>-->9",
+      "<http://example.org/warrington>-->5",
+      "<http://example.org/computer>-->17",
+      "<http://example.org/wilmslow>-->7",
+      "<http://example.org/uk>-->13",
+      "<http://example.org/town>-->14"
     ],
     "_zarrs": {
       "description": "This array was created with zarrs",

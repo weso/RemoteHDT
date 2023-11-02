@@ -21,7 +21,7 @@ fn write_read_test() {
 
     let actual = remote_hdt.load("root.zarr").unwrap();
 
-    let mut expected = CooMatrix::<u8>::new(4, 9);
+    let mut expected = CooMatrix::<u32>::new(18, 18);
     expected.push(
         remote_hdt.get_subject_idx_unchecked("<http://example.org/alan>"),
         remote_hdt.get_object_idx_unchecked("<http://example.org/Human>"),

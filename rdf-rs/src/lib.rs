@@ -1,106 +1,39 @@
 use ntriples::NTriples;
 use rdf_xml::RdfXml;
-use rio_api::formatter::TriplesFormatter;
-use rio_api::parser::TriplesParser;
-use std::collections::HashMap;
-use std::error::Error;
+use sophia::graph::inmem::sync::FastGraph;
+use sophia::parser::TripleParser;
+use sophia::triple::stream::TripleSource;
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::BufReader;
 use turtle::Turtle;
 
 mod ntriples;
 mod rdf_xml;
 mod turtle;
-
-pub struct Graph {
-    triples: HashMap<String, Vec<(String, String)>>,
-    subjects: Vec<String>,
-    predicates: HashMap<String, usize>,
-    objects: HashMap<String, usize>,
-}
-
-impl Graph {
-    pub fn new() -> Self {
-        Graph {
-            triples: HashMap::<String, Vec<(String, String)>>::new(),
-            subjects: Vec::<String>::new(),
-            predicates: HashMap::<String, usize>::new(),
-            objects: HashMap::<String, usize>::new(),
-        }
-    }
-
-    pub fn insert(&mut self, subject: String, predicate: String, object: String) {
-        if self.subjects.contains(&subject) {
-            self.triples
-                .get_mut(&subject)
-                .unwrap()
-                .push((predicate.to_owned(), object.to_owned()));
-        } else {
-            self.triples.insert(
-                subject.to_owned(),
-                vec![(predicate.to_owned(), object.to_owned())],
-            );
-            self.subjects.push(subject);
-        }
-
-        if !self.predicates.contains_key(&predicate) {
-            // We start by one as the 0 value is reserved for those cases where
-            // there's no predicate relating a certain subject and object
-            self.predicates.insert(predicate, self.predicates.len() + 1);
-        }
-        if !self.objects.contains_key(&object) {
-            self.objects.insert(object, self.objects.len());
-        }
-    }
-
-    pub fn triples(&self) -> HashMap<String, Vec<(String, String)>> {
-        self.triples.to_owned()
-    }
-
-    pub fn subjects(&self) -> Vec<String> {
-        self.triples
-            .iter()
-            .map(|(value, _)| value.to_owned())
-            .collect()
-    }
-
-    pub fn predicates(&self) -> HashMap<String, usize> {
-        self.predicates.to_owned()
-    }
-
-    pub fn objects(&self) -> HashMap<String, usize> {
-        self.objects.to_owned()
-    }
-}
-
 pub struct RdfParser {
-    pub graph: Graph,
+    pub graph: FastGraph,
 }
 
-trait Backend<'a, P: TriplesParser, F: TriplesFormatter> {
-    fn parse(&self, path: &str) -> Result<Graph, String> {
-        let mut graph = Graph::new();
+trait Backend<'a, P: TripleParser<BufReader<File>>> {
+    fn parse(&self, path: &str) -> Result<FastGraph, String> {
+        let mut graph = FastGraph::new();
 
         let reader = BufReader::new(match File::open(path) {
             Ok(file) => file,
             Err(_) => return Err(String::from("Cannot open the file")),
         });
 
-        match self.concrete_parser(reader).parse_all(&mut |t| {
-            graph.insert(
-                t.subject.to_string(),
-                t.predicate.to_string(),
-                t.object.to_string(),
-            );
-            Ok(()) as Result<(), Box<dyn Error>>
-        }) {
+        match self
+            .concrete_parser()
+            .parse(reader)
+            .add_to_graph(&mut graph)
+        {
             Ok(_) => Ok(graph),
             Err(_) => Err(String::from("Error parsing the graph")),
         }
     }
 
-    fn concrete_parser(&self, reader: BufReader<File>) -> P;
-    fn concrete_formatter(&self, writer: BufWriter<File>) -> F;
+    fn concrete_parser(&self) -> P;
 }
 
 impl RdfParser {

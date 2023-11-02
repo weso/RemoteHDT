@@ -1,16 +1,18 @@
 use nalgebra_sparse::CooMatrix;
 use nalgebra_sparse::CsrMatrix;
-use rayon::prelude::IndexedParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
-use rayon::prelude::ParallelBridge;
 use rayon::prelude::ParallelIterator;
-use rdf_rs::Graph;
 use rdf_rs::RdfParser;
 use serde_json::Map;
+use sophia::graph::indexed::IndexedGraph;
+use sophia::graph::inmem::sync::FastGraph;
+use sophia::graph::GTripleSource;
+use sophia::graph::Graph;
+use sophia::triple::Triple;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::AtomicU8;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use zarrs::array::Array;
@@ -25,7 +27,7 @@ use zarrs::storage::ReadableStorageTraits;
 
 use crate::error::RemoteHDTError;
 
-pub type ZarrArray = CsrMatrix<u8>;
+pub type ZarrArray = CsrMatrix<u32>;
 pub type RemoteHDTResult<T> = Result<T, RemoteHDTError>;
 
 const ARRAY_NAME: &str = "/group/RemoteHDT";
@@ -47,6 +49,10 @@ impl RemoteHDT {
 
     pub fn serialize<'a>(&self, zarr_path: &'a str, rdf_path: &'a str) -> RemoteHDTResult<&Self> {
         let path = PathBuf::from_str(zarr_path)?;
+        if path.exists() {
+            return Err(RemoteHDTError::PathExistsError);
+        }
+
         let store = Arc::new(FilesystemStore::new(path)?);
 
         // Create a group and write metadata to filesystem
@@ -54,16 +60,46 @@ impl RemoteHDT {
         group.store_metadata()?;
 
         // 3. Import the RDF dump using `rdf-rs`
-        let graph = RdfParser::new(rdf_path).unwrap().graph; // TODO: remove unwrap
+        let graph: FastGraph = RdfParser::new(rdf_path).unwrap().graph;
+
+        // TODO: This should be improved, currently, the size of the array will
+        // be computed in a not-so efficient manner. That system will pick the
+        // highest index and choose that as the size of the rows and the columns
+        let max_subject = graph
+            .subjects()?
+            .par_iter()
+            .map(|term| graph.get_index(term).unwrap())
+            .max()
+            .unwrap();
+
+        let max_predicate = graph
+            .predicates()?
+            .par_iter()
+            .map(|term| graph.get_index(term).unwrap())
+            .max()
+            .unwrap();
+
+        let max_object = graph
+            .objects()?
+            .par_iter()
+            .map(|term| graph.get_index(term).unwrap())
+            .max()
+            .unwrap();
+
+        let size = *[max_subject, max_predicate, max_object]
+            .iter()
+            .max()
+            .unwrap() as u64
+            + 1;
 
         // 4. Build the structure of the Array; as such, several parameters of it are
         // tweaked. Namely, the size of the array, the size of the chunks, the name
         // of the different dimensions and the default values
         let array = ArrayBuilder::new(
-            vec![graph.subjects().len() as u64, graph.objects().len() as u64],
-            DataType::UInt8,
-            vec![1, graph.objects().len() as u64].into(),
-            FillValue::from(0u8),
+            vec![size, size],      // TODO: this should be vec![subjects.len(), objects.len()]
+            DataType::UInt32,      // TODO: Could this be changed to U8 or to U16?
+            vec![1, size].into(), // TODO: the size of the chunk should be [1, objects.len()]; that is, 1 row
+            FillValue::from(0u32), // TODO: the fill value is fine, but it can be improved
         )
         .dimension_names(Some(vec![
             DimensionName::new("Subject"),
@@ -73,29 +109,37 @@ impl RemoteHDT {
             let mut attributes = Map::new();
             attributes.insert(
                 "subjects".to_string(),
-                graph
-                    .subjects()
+                graph // TODO: we are doing the same process three times --> Function
+                    .subjects()?
                     .par_iter()
-                    .enumerate()
-                    .map(|(i, subject)| format!("{}-->{}", i, subject))
+                    .map(|term| {
+                        // TODO: this process could be improved by using our own Indices
+                        format!("{}-->{}", term.to_string(), graph.get_index(term).unwrap())
+                    })
                     .collect::<Vec<_>>()
                     .into(),
             );
             attributes.insert(
                 "predicates".to_string(),
-                graph
-                    .predicates()
+                graph // TODO: we are doing the same process three times --> Function
+                    .predicates()?
                     .par_iter()
-                    .map(|predicate| format!("{}-->{}", predicate.1, predicate.0))
+                    .map(|term| {
+                        // TODO: this process could be improved by using our own Indices
+                        format!("{}-->{}", term.to_string(), graph.get_index(term).unwrap())
+                    })
                     .collect::<Vec<_>>()
                     .into(),
             );
             attributes.insert(
                 "objects".to_string(),
-                graph
-                    .objects()
+                graph // TODO: we are doing the same process three times --> Function
+                    .objects()?
                     .par_iter()
-                    .map(|object| format!("{}-->{}", object.1, object.0))
+                    .map(|term| {
+                        // TODO: this process could be improved by using our own Indices
+                        format!("{}-->{}", term.to_string(), graph.get_index(term).unwrap())
+                    })
                     .collect::<Vec<_>>()
                     .into(),
             );
@@ -110,35 +154,35 @@ impl RemoteHDT {
         // the provided values (second vector). What's more, an offset can be set;
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
-        graph
-            .triples()
-            .iter()
-            .enumerate()
-            .par_bridge()
-            .for_each(|(i, (_, values))| {
-                let ans = self.create_array(values, &graph);
-                if let Ok(chunk_elements) = ans {
-                    let _ = array.store_chunk_elements(&[i as u64, 0], chunk_elements.as_slice());
-                }
-            });
+        graph.subjects()?.par_iter().for_each(|subject| {
+            let i = graph.get_index(subject).unwrap();
+            let ans = self.create_array(graph.triples_with_s(subject), &graph, size);
+            if let Ok(chunk_elements) = ans {
+                let _ = array.store_chunk_elements(&[i as u64, 0], chunk_elements.as_slice());
+            }
+        });
 
         Ok(self)
     }
 
     fn create_array(
         &self,
-        triples: &Vec<(String, String)>,
-        graph: &Graph,
-    ) -> RemoteHDTResult<Vec<u8>> {
-        let slice: Vec<AtomicU8> = vec![0; graph.objects().len()]
+        triples: GTripleSource<FastGraph>,
+        graph: &FastGraph,
+        size: u64, // TODO: this is avoidable...
+    ) -> RemoteHDTResult<Vec<u32>> {
+        let slice: Vec<AtomicU32> = vec![0; size.try_into().unwrap()]
             .par_iter()
-            .map(|&n| AtomicU8::new(n))
+            .map(|&n| AtomicU32::new(n))
             .collect();
 
-        triples.par_iter().for_each(|(predicate, object)| {
-            let pidx = graph.predicates().get(predicate).unwrap().to_owned();
-            let oidx = graph.objects().get(object).unwrap().to_owned();
-            slice[oidx].store(pidx as u8, Ordering::Relaxed);
+        triples.for_each(|result_triple| match result_triple {
+            Ok(triple) => {
+                let pidx = graph.get_index(triple.p()).unwrap() as u32;
+                let oidx = graph.get_index(triple.o()).unwrap() as usize;
+                slice[oidx].store(pidx, Ordering::Relaxed);
+            }
+            Err(_) => return,
         });
 
         Ok(slice
@@ -171,11 +215,11 @@ impl RemoteHDT {
             .unwrap()
             .as_array()
             .unwrap()
-            .par_iter()
+            .iter()
             .map(|subject| {
                 let binding = subject.as_str().unwrap().to_string();
                 let arr = binding.split("-->").collect::<Vec<_>>();
-                (arr[1].to_string(), FromStr::from_str(arr[0]).unwrap())
+                (arr[0].to_string(), FromStr::from_str(arr[1]).unwrap())
             })
             .collect::<HashMap<String, usize>>();
 
@@ -184,11 +228,11 @@ impl RemoteHDT {
             .unwrap()
             .as_array()
             .unwrap()
-            .par_iter()
+            .iter()
             .map(|predicate| {
                 let binding = predicate.as_str().unwrap().to_string();
                 let arr = binding.split("-->").collect::<Vec<_>>();
-                (arr[1].to_string(), FromStr::from_str(arr[0]).unwrap())
+                (arr[0].to_string(), FromStr::from_str(arr[1]).unwrap())
             })
             .collect::<HashMap<String, usize>>();
 
@@ -197,23 +241,23 @@ impl RemoteHDT {
             .unwrap()
             .as_array()
             .unwrap()
-            .par_iter()
+            .iter()
             .map(|object| {
                 let binding = object.as_str().unwrap().to_string();
                 let arr = binding.split("-->").collect::<Vec<_>>();
-                (arr[1].to_string(), FromStr::from_str(arr[0]).unwrap())
+                (arr[0].to_string(), FromStr::from_str(arr[1]).unwrap())
             })
             .collect::<HashMap<String, usize>>();
 
         // 5. We read the region from the Array we have just created
-        let mut matrix = CooMatrix::new(self.subjects.len(), self.objects.len());
+        let mut matrix = CooMatrix::<u32>::new(arr.shape()[0] as usize, arr.shape()[1] as usize);
         self.subjects.iter().for_each(|(_, &i)| {
-            arr.retrieve_chunk(&[i as u64, 0])
+            arr.retrieve_chunk_elements::<u32>(&[i as u64, 0])
                 .unwrap()
                 .iter()
                 .enumerate()
                 .for_each(|(j, value)| {
-                    if value != &0u8 {
+                    if value != &0u32 {
                         matrix.push(i, j, value.to_owned());
                     }
                 })
@@ -234,8 +278,8 @@ impl RemoteHDT {
         self.predicates.get(predicate).copied()
     }
 
-    pub fn get_predicate_idx_unchecked(&self, predicate: &str) -> u8 {
-        self.predicates.get(predicate).unwrap().to_owned() as u8
+    pub fn get_predicate_idx_unchecked(&self, predicate: &str) -> u32 {
+        self.predicates.get(predicate).unwrap().to_owned() as u32
     }
 
     pub fn get_object_idx(&self, object: &str) -> Option<usize> {
@@ -247,6 +291,7 @@ impl RemoteHDT {
     }
 }
 
+// TODO: this could be moved to a utils.rs module
 pub fn print(matrix: ZarrArray) {
     if matrix.nrows() > 100 || matrix.ncols() > 100 {
         return;

@@ -4,7 +4,5 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-rio_api = "0.8.4"
-rio_turtle = "0.8.4"
-rio_xml = "0.8.4"
+sophia = { version = "0.7.2", features = [ "xml" ] }
 rayon = "1.8.0"

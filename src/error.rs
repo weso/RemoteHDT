@@ -26,6 +26,8 @@ pub enum RemoteHDTError {
     Array(#[from] ArrayError),
     #[error(transparent)]
     HTTPCreate(#[from] HTTPStoreCreateError),
+    #[error("The Path already exists, please provide an empty path")]
+    PathExistsError,
 }
 
 #[derive(Error, Debug)]
