@@ -1,11 +1,13 @@
 use nalgebra_sparse::CooMatrix;
 use nalgebra_sparse::CsrMatrix;
+use rayon::prelude::IndexedParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
 use rayon::prelude::ParallelBridge;
 use rayon::prelude::ParallelIterator;
 use rdf_rs::Graph;
 use rdf_rs::RdfParser;
 use serde_json::Map;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
@@ -16,6 +18,7 @@ use zarrs::array::ArrayBuilder;
 use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
+use zarrs::array_subset::ArraySubset;
 use zarrs::group::GroupBuilder;
 use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::ReadableWritableStorage;
@@ -30,11 +33,17 @@ const ARRAY_NAME: &str = "/group/RemoteHDT";
 pub struct RemoteHDT<'a> {
     rdf_path: &'a str,
     store: ReadableWritableStorage<'static>,
+    subjects: HashMap<String, usize>,
+    predicates: HashMap<String, usize>,
+    objects: HashMap<String, usize>,
 }
 
 pub struct RemoteHDTBuilder<'a> {
     rdf_path: &'a str,
     store: ReadableWritableStorage<'static>,
+    subjects: HashMap<String, usize>,
+    predicates: HashMap<String, usize>,
+    objects: HashMap<String, usize>,
 }
 
 impl<'a> RemoteHDTBuilder<'a> {
@@ -47,6 +56,9 @@ impl<'a> RemoteHDTBuilder<'a> {
         Ok(RemoteHDTBuilder {
             rdf_path: Default::default(),
             store,
+            subjects: HashMap::new(),
+            predicates: HashMap::new(),
+            objects: HashMap::new(),
         })
     }
 
@@ -60,6 +72,9 @@ impl<'a> RemoteHDTBuilder<'a> {
         RemoteHDT {
             rdf_path: self.rdf_path,
             store: self.store,
+            subjects: self.subjects,
+            predicates: self.predicates,
+            objects: self.objects,
         }
     }
 }
@@ -93,7 +108,8 @@ impl<'a> RemoteHDT<'a> {
                 graph
                     .subjects()
                     .par_iter()
-                    .map(|subject| subject.to_owned())
+                    .enumerate()
+                    .map(|(i, subject)| format!("{}-->{}", i, subject))
                     .collect::<Vec<_>>()
                     .into(),
             );
@@ -102,7 +118,7 @@ impl<'a> RemoteHDT<'a> {
                 graph
                     .predicates()
                     .par_iter()
-                    .map(|predicate| predicate.0.to_owned())
+                    .map(|predicate| format!("{}-->{}", predicate.1, predicate.0))
                     .collect::<Vec<_>>()
                     .into(),
             );
@@ -111,7 +127,7 @@ impl<'a> RemoteHDT<'a> {
                 graph
                     .objects()
                     .par_iter()
-                    .map(|object| object.0.to_owned())
+                    .map(|object| format!("{}-->{}", object.1, object.0))
                     .collect::<Vec<_>>()
                     .into(),
             );
@@ -163,43 +179,55 @@ impl<'a> RemoteHDT<'a> {
             .collect())
     }
 
-    pub fn load(&mut self) -> RemoteHDTResult<(ZarrArray, Vec<String>, Vec<String>, Vec<String>)> {
+    pub fn load(&mut self) -> RemoteHDTResult<ZarrArray> {
         // 3. We import the Array from the FileSystemStore that we have created
         let arr = Array::new(self.store.clone(), ARRAY_NAME)?;
 
         // 4. We get the attributes so we can obtain some values that we will need
         let attributes = arr.attributes();
 
-        let subjects = attributes
+        self.subjects = attributes
             .get("subjects")
             .unwrap()
             .as_array()
             .unwrap()
             .par_iter()
-            .map(|subject| subject.as_str().unwrap().to_string())
-            .collect::<Vec<String>>();
+            .map(|subject| {
+                let binding = subject.as_str().unwrap().to_string();
+                let arr = binding.split("-->").collect::<Vec<_>>();
+                (arr[1].to_string(), FromStr::from_str(arr[0]).unwrap())
+            })
+            .collect::<HashMap<String, usize>>();
 
-        let predicates = attributes
+        self.predicates = attributes
             .get("predicates")
             .unwrap()
             .as_array()
             .unwrap()
             .par_iter()
-            .map(|predicate| predicate.as_str().unwrap().to_string())
-            .collect::<Vec<String>>();
+            .map(|predicate| {
+                let binding = predicate.as_str().unwrap().to_string();
+                let arr = binding.split("-->").collect::<Vec<_>>();
+                (arr[1].to_string(), FromStr::from_str(arr[0]).unwrap())
+            })
+            .collect::<HashMap<String, usize>>();
 
-        let objects = attributes
+        self.objects = attributes
             .get("objects")
             .unwrap()
             .as_array()
             .unwrap()
             .par_iter()
-            .map(|object| object.as_str().unwrap().to_string())
-            .collect::<Vec<String>>();
+            .map(|object| {
+                let binding = object.as_str().unwrap().to_string();
+                let arr = binding.split("-->").collect::<Vec<_>>();
+                (arr[1].to_string(), FromStr::from_str(arr[0]).unwrap())
+            })
+            .collect::<HashMap<String, usize>>();
 
         // 5. We read the region from the Array we have just created
-        let mut matrix = CooMatrix::new(subjects.len(), objects.len());
-        (0..subjects.len()).for_each(|i| {
+        let mut matrix = CooMatrix::new(self.subjects.len(), self.objects.len());
+        self.subjects.iter().for_each(|(_, &i)| {
             arr.retrieve_chunk(&[i as u64, 0])
                 .unwrap()
                 .iter()
@@ -211,6 +239,30 @@ impl<'a> RemoteHDT<'a> {
                 })
         });
 
-        Ok((CsrMatrix::from(&matrix), subjects, predicates, objects))
+        Ok(CsrMatrix::from(&matrix))
+    }
+
+    pub fn get_subject_idx(&self, subject: &str) -> Option<usize> {
+        self.subjects.get(subject).copied()
+    }
+
+    pub fn get_subject_idx_unchecked(&self, subject: &str) -> usize {
+        self.subjects.get(subject).unwrap().to_owned()
+    }
+
+    pub fn get_predicate_idx(&self, predicate: &str) -> Option<usize> {
+        self.predicates.get(predicate).copied()
+    }
+
+    pub fn get_predicate_idx_unchecked(&self, predicate: &str) -> usize {
+        self.predicates.get(predicate).unwrap().to_owned()
+    }
+
+    pub fn get_object_idx(&self, object: &str) -> Option<usize> {
+        self.objects.get(object).copied()
+    }
+
+    pub fn get_object_idx_unchecked(&self, object: &str) -> u8 {
+        self.objects.get(object).unwrap().to_owned() as u8
     }
 }

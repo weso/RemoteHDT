@@ -14,7 +14,7 @@ mod turtle;
 
 pub struct Graph {
     triples: HashMap<String, Vec<(String, String)>>,
-    subjects: HashSet<String>,
+    subjects: Vec<String>,
     predicates: HashMap<String, usize>,
     objects: HashMap<String, usize>,
 }
@@ -23,7 +23,7 @@ impl Graph {
     pub fn new() -> Self {
         Graph {
             triples: HashMap::<String, Vec<(String, String)>>::new(),
-            subjects: HashSet::<String>::new(),
+            subjects: Vec::<String>::new(),
             predicates: HashMap::<String, usize>::new(),
             objects: HashMap::<String, usize>::new(),
         }
@@ -40,12 +40,13 @@ impl Graph {
                 subject.to_owned(),
                 vec![(predicate.to_owned(), object.to_owned())],
             );
+            self.subjects.push(subject);
         }
 
-        self.subjects.insert(subject);
-
         if !self.predicates.contains_key(&predicate) {
-            self.predicates.insert(predicate, self.predicates.len());
+            // We start by one as the 0 value is reserved for those cases where
+            // there's no predicate relating a certain subject and object
+            self.predicates.insert(predicate, self.predicates.len() + 1);
         }
         if !self.objects.contains_key(&object) {
             self.objects.insert(object, self.objects.len());
@@ -57,7 +58,10 @@ impl Graph {
     }
 
     pub fn subjects(&self) -> Vec<String> {
-        Vec::from_iter(self.subjects.to_owned())
+        self.triples
+            .iter()
+            .map(|(value, _)| value.to_owned())
+            .collect()
     }
 
     pub fn predicates(&self) -> HashMap<String, usize> {

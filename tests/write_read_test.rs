@@ -21,25 +21,70 @@ fn write_read_test() {
         .build()
         .serialize();
 
-    let mut expected = CooMatrix::<u8>::new(4, 9);
-    expected.push(0, 0, 0);
-    expected.push(0, 1, 1);
-    expected.push(0, 2, 2);
-    expected.push(0, 3, 3);
-    expected.push(0, 4, 4);
-    expected.push(1, 5, 5);
-    expected.push(2, 5, 5);
-    expected.push(2, 6, 0);
-    expected.push(3, 7, 6);
-    expected.push(3, 8, 0);
-    expected.push(3, 4, 7);
-
-    let (actual, _, _, _) = RemoteHDTBuilder::new("root.zarr")
+    let mut remote_hdt = RemoteHDTBuilder::new("root.zarr")
         .unwrap()
         .rdf_path("resources/rdf.nt")
-        .build()
-        .load()
-        .unwrap();
+        .build();
+
+    let actual = remote_hdt.load().unwrap();
+
+    let mut expected = CooMatrix::<u8>::new(4, 9);
+    expected.push(
+        remote_hdt.get_subject_idx_unchecked("<http://example.org/alan>"),
+        remote_hdt.get_predicate_idx_unchecked("<http://example.org/instanceOf>"),
+        remote_hdt.get_object_idx_unchecked("<http://example.org/Human>"),
+    );
+    expected.push(
+        remote_hdt.get_subject_idx_unchecked("<http://example.org/alan>"),
+        remote_hdt.get_predicate_idx_unchecked("<http://example.org/placeOfBirth>"),
+        remote_hdt.get_object_idx_unchecked("<http://example.org/warrington>"),
+    );
+    expected.push(
+        remote_hdt.get_subject_idx_unchecked("<http://example.org/alan>"),
+        remote_hdt.get_predicate_idx_unchecked("<http://example.org/placeOfDeath>"),
+        remote_hdt.get_object_idx_unchecked("<http://example.org/wilmslow>"),
+    );
+    expected.push(
+        remote_hdt.get_subject_idx_unchecked("<http://example.org/alan>"),
+        remote_hdt.get_predicate_idx_unchecked("<http://example.org/dateOfBirth>"),
+        remote_hdt
+            .get_object_idx_unchecked("\"1912-06-23\"^^<http://www.w3.org/2001/XMLSchemadate>"),
+    );
+    expected.push(
+        remote_hdt.get_subject_idx_unchecked("<http://example.org/alan>"),
+        remote_hdt.get_predicate_idx_unchecked("<http://example.org/employer>"),
+        remote_hdt.get_object_idx_unchecked("<http://example.org/GCHQ>"),
+    );
+    expected.push(
+        remote_hdt.get_subject_idx_unchecked("<http://example.org/warrington>"),
+        remote_hdt.get_predicate_idx_unchecked("<http://example.org/country>"),
+        remote_hdt.get_object_idx_unchecked("<http://example.org/uk>"),
+    );
+    expected.push(
+        remote_hdt.get_subject_idx_unchecked("<http://example.org/wilmslow>"),
+        remote_hdt.get_predicate_idx_unchecked("<http://example.org/country>"),
+        remote_hdt.get_object_idx_unchecked("<http://example.org/uk>"),
+    );
+    expected.push(
+        remote_hdt.get_subject_idx_unchecked("<http://example.org/wilmslow>"),
+        remote_hdt.get_predicate_idx_unchecked("<http://example.org/instanceOf>"),
+        remote_hdt.get_object_idx_unchecked("<http://example.org/town>"),
+    );
+    expected.push(
+        remote_hdt.get_subject_idx_unchecked("<http://example.org/bombe>"),
+        remote_hdt.get_predicate_idx_unchecked("<http://example.org/discoverer>"),
+        remote_hdt.get_object_idx_unchecked("<http://example.org/alan>"),
+    );
+    expected.push(
+        remote_hdt.get_subject_idx_unchecked("<http://example.org/bombe>"),
+        remote_hdt.get_predicate_idx_unchecked("<http://example.org/instanceOf>"),
+        remote_hdt.get_object_idx_unchecked("<http://example.org/computer>"),
+    );
+    expected.push(
+        remote_hdt.get_subject_idx_unchecked("<http://example.org/bombe>"),
+        remote_hdt.get_predicate_idx_unchecked("<http://example.org/manufacturer>"),
+        remote_hdt.get_object_idx_unchecked("<http://example.org/GCHQ>"),
+    );
 
     assert_eq!(actual, CsrMatrix::from(&expected));
 
