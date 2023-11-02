@@ -1,10 +1,5 @@
-use remote_hdt::remote_hdt::RemoteHDTBuilder;
+use remote_hdt::remote_hdt::RemoteHDT;
 
 pub fn main() {
-    let _ = RemoteHDTBuilder::new("root.zarr")
-        .unwrap()
-        .rdf_path("examples/ntriples/rdf.nt")
-        .build()
-        .serialize()
-        .unwrap();
+    let _ = RemoteHDT::new().serialize("root.zarr", "examples/turtle/rdf.nt");
 }

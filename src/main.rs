@@ -1,5 +1,5 @@
 use clap::Parser;
-use remote_hdt::remote_hdt::{RemoteHDTBuilder, RemoteHDTResult};
+use remote_hdt::remote_hdt::{RemoteHDT, RemoteHDTResult};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -15,11 +15,6 @@ struct Args {
 
 fn main() -> RemoteHDTResult<()> {
     let args: Args = Args::parse();
-
-    RemoteHDTBuilder::new(&args.zarr)?
-        .rdf_path(&args.rdf)
-        .build()
-        .serialize()?;
-
+    RemoteHDT::new().serialize(&args.zarr, &args.rdf)?;
     Ok(())
 }
