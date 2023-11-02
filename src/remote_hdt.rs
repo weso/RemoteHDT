@@ -234,15 +234,36 @@ impl RemoteHDT {
         self.predicates.get(predicate).copied()
     }
 
-    pub fn get_predicate_idx_unchecked(&self, predicate: &str) -> usize {
-        self.predicates.get(predicate).unwrap().to_owned()
+    pub fn get_predicate_idx_unchecked(&self, predicate: &str) -> u8 {
+        self.predicates.get(predicate).unwrap().to_owned() as u8
     }
 
     pub fn get_object_idx(&self, object: &str) -> Option<usize> {
         self.objects.get(object).copied()
     }
 
-    pub fn get_object_idx_unchecked(&self, object: &str) -> u8 {
-        self.objects.get(object).unwrap().to_owned() as u8
+    pub fn get_object_idx_unchecked(&self, object: &str) -> usize {
+        self.objects.get(object).unwrap().to_owned()
     }
+}
+
+pub fn print(matrix: ZarrArray) {
+    if matrix.nrows() > 100 || matrix.ncols() > 100 {
+        return;
+    }
+
+    let separator = format!("{}+", "+----".repeat(matrix.ncols()));
+
+    matrix.row_iter().for_each(|row| {
+        print!("{}\n|", separator);
+        for i in 0..row.ncols() {
+            match row.get_entry(i) {
+                Some(predicate) => print!(" {:^2} |", predicate.into_value()),
+                None => print!("{}", 0),
+            }
+        }
+        println!()
+    });
+
+    println!("{}", separator);
 }
