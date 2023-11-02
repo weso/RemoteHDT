@@ -1,7 +1,8 @@
 use remote_hdt::{engine::EngineStrategy, remote_hdt::RemoteHDT};
 use std::time::Instant;
 
-const BENCHMARKS: [&str; 1] = ["resources/root.zarr"];
+const BENCHMARKS: [&str; 1] =
+    ["https://raw.githubusercontent.com/weso/RemoteHDT/master/resources/root.zarr"];
 
 fn main() {
     let mut remote_hdt = RemoteHDT::new();
