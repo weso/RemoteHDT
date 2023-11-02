@@ -5,7 +5,7 @@ const BENCHMARKS: [&str; 1] = ["root"];
 
 fn main() {
     let before = Instant::now();
-    let arr = RemoteHDTBuilder::new(format!("{}.zarr", BENCHMARKS[0]).as_str())
+    let _ = RemoteHDTBuilder::new(format!("{}.zarr", BENCHMARKS[0]).as_str())
         .unwrap()
         .build()
         .load()

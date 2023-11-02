@@ -13,10 +13,10 @@ impl EngineStrategy for ZarrArray {
             .iter()
             .for_each(|&index| b_mat.push(index, index, 1u8));
         let selection = CsrMatrix::from(&b_mat);
-        let pattern = spmm_csr_pattern(&selection.pattern(), &self.pattern());
+        let pattern = spmm_csr_pattern(selection.pattern(), self.pattern());
         let nnz = pattern.nnz();
         let mut ans = CsrMatrix::try_from_pattern_and_values(pattern, vec![0u8; nnz]).unwrap();
-        let _ = spmm_csr_prealloc(0, &mut ans, 1, NoOp(&selection), NoOp(&self)).unwrap();
+        spmm_csr_prealloc(0, &mut ans, 1, NoOp(&selection), NoOp(self)).unwrap();
         Ok(ans)
     }
 

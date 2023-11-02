@@ -18,7 +18,6 @@ use zarrs::array::ArrayBuilder;
 use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
-use zarrs::array_subset::ArraySubset;
 use zarrs::group::GroupBuilder;
 use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::ReadableWritableStorage;
@@ -92,7 +91,7 @@ impl<'a> RemoteHDT<'a> {
         // tweaked. Namely, the size of the array, the size of the chunks, the name
         // of the different dimensions and the default values
         let array = ArrayBuilder::new(
-            vec![graph.subjects().len() as u64, graph.objects().len() as u64].into(),
+            vec![graph.subjects().len() as u64, graph.objects().len() as u64],
             DataType::UInt8,
             vec![1, graph.objects().len() as u64].into(),
             FillValue::from(0u8),
@@ -149,8 +148,8 @@ impl<'a> RemoteHDT<'a> {
             .par_bridge()
             .for_each(|(i, (_, values))| {
                 let ans = self.create_array(values, &graph);
-                if ans.is_ok() {
-                    let _ = array.store_chunk_elements(&vec![i as u64, 0], ans.unwrap().as_slice());
+                if let Ok(chunk_elements) = ans {
+                    let _ = array.store_chunk_elements(&[i as u64, 0], chunk_elements.as_slice());
                 }
             });
 
