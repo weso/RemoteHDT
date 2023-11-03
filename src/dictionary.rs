@@ -93,7 +93,10 @@ impl Dictionary {
 
     pub fn get_predicate_idx(&self, predicate: &str) -> Option<usize> {
         let mut locator = self.predicates.locator();
-        locator.run(predicate)
+        match locator.run(predicate) {
+            Some(value) => Some(value + 1), // 0s are reserved for non-existant edges
+            None => todo!(),
+        }
     }
 
     pub fn get_predicate_idx_unchecked(&self, predicate: &str) -> usize {

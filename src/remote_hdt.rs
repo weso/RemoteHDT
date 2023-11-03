@@ -134,13 +134,17 @@ impl RemoteHDT {
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
         graph.subjects()?.par_iter().for_each(|subject| {
-            let i = self
-                .dictionary
-                .get_subject_idx(&subject.to_string())
-                .unwrap();
             let ans = self.create_array(graph.triples_with_s(subject));
             if let Ok(chunk_elements) = ans {
-                let _ = array.store_chunk_elements(&[i as u64, 0], chunk_elements.as_slice());
+                let _ = array.store_chunk_elements(
+                    &[
+                        self.dictionary
+                            .get_subject_idx_unchecked(&subject.to_string())
+                            as u64,
+                        0,
+                    ],
+                    chunk_elements.as_slice(),
+                );
             }
         });
 
@@ -232,9 +236,9 @@ impl RemoteHDT {
                 .unwrap()
                 .iter()
                 .enumerate()
-                .for_each(|(j, value)| {
-                    if value != &0u32 {
-                        matrix.push(i, j, value.to_owned());
+                .for_each(|(j, &value)| {
+                    if value != 0u32 {
+                        matrix.push(i, j, value);
                     }
                 })
         });

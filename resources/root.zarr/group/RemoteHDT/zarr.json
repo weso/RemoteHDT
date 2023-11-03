@@ -2,8 +2,8 @@
   "node_type": "array",
   "zarr_format": 3,
   "shape": [
-    18,
-    18
+    4,
+    9
   ],
   "data_type": "uint32",
   "chunk_grid": {
@@ -11,7 +11,7 @@
     "configuration": {
       "chunk_shape": [
         1,
-        18
+        9
       ]
     }
   },
@@ -32,31 +32,31 @@
   ],
   "attributes": {
     "subjects": [
-      "<http://example.org/warrington>-->5",
-      "<http://example.org/bombe>-->15",
-      "<http://example.org/alan>-->1",
-      "<http://example.org/wilmslow>-->7"
+      "<http://example.org/alan>",
+      "<http://example.org/warrington>",
+      "<http://example.org/wilmslow>",
+      "<http://example.org/bombe>"
     ],
     "predicates": [
-      "<http://example.org/dateOfBirth>-->8",
-      "<http://example.org/placeOfDeath>-->6",
-      "<http://example.org/country>-->12",
-      "<http://example.org/discoverer>-->16",
-      "<http://example.org/placeOfBirth>-->4",
-      "<http://example.org/manufacturer>-->18",
-      "<http://example.org/employer>-->10",
-      "<http://example.org/instanceOf>-->2"
+      "<http://example.org/country>",
+      "<http://example.org/dateOfBirth>",
+      "<http://example.org/discoverer>",
+      "<http://example.org/employer>",
+      "<http://example.org/instanceOf>",
+      "<http://example.org/manufacturer>",
+      "<http://example.org/placeOfBirth>",
+      "<http://example.org/placeOfDeath>"
     ],
     "objects": [
-      "<http://example.org/alan>-->1",
-      "<http://example.org/GCHQ>-->11",
-      "<http://example.org/Human>-->3",
-      "\"1912-06-23\"^^<http://www.w3.org/2001/XMLSchemadate>-->9",
-      "<http://example.org/warrington>-->5",
-      "<http://example.org/computer>-->17",
-      "<http://example.org/wilmslow>-->7",
-      "<http://example.org/uk>-->13",
-      "<http://example.org/town>-->14"
+      "\"1912-06-23\"^^<http://www.w3.org/2001/XMLSchemadate>",
+      "<http://example.org/GCHQ>",
+      "<http://example.org/Human>",
+      "<http://example.org/alan>",
+      "<http://example.org/computer>",
+      "<http://example.org/town>",
+      "<http://example.org/uk>",
+      "<http://example.org/warrington>",
+      "<http://example.org/wilmslow>"
     ],
     "_zarrs": {
       "description": "This array was created with zarrs",
