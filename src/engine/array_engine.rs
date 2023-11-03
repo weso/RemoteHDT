@@ -8,7 +8,7 @@ use super::{EngineResult, EngineStrategy};
 
 impl EngineStrategy for ZarrArray {
     fn get_subject(&self, indices: Vec<usize>) -> EngineResult {
-        let mut b_mat = CooMatrix::<u32>::zeros(self.nrows(), self.ncols());
+        let mut b_mat = CooMatrix::<u32>::zeros(self.nrows(), self.nrows());
         indices
             .iter()
             .for_each(|&index| b_mat.push(index, index, 1));

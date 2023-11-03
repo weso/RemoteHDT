@@ -13,6 +13,7 @@ rayon = "1.8.0"
 thiserror = "1.0.50"
 nalgebra-sparse = "0.9.0"
 sophia = { version = "0.7.2" }
+fcsd = "0.2.0"
 
 [profile.release]
 codegen-units = 1
