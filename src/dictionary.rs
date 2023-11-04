@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 
 use fcsd::Set;
+use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use sophia::term::ArcTerm;
+
+use crate::utils::hash_to_set;
 
 pub struct Dictionary {
     subjects: Set,
@@ -32,33 +35,9 @@ impl Dictionary {
         objects: HashSet<ArcTerm>,
     ) -> Self {
         Dictionary {
-            subjects: Set::new({
-                let mut vec = subjects
-                    .iter()
-                    .map(|term| term.to_string())
-                    .collect::<Vec<String>>();
-                vec.sort();
-                vec
-            })
-            .unwrap(),
-            predicates: Set::new({
-                let mut vec = predicates
-                    .iter()
-                    .map(|term| term.to_string())
-                    .collect::<Vec<String>>();
-                vec.sort();
-                vec
-            })
-            .unwrap(),
-            objects: Set::new({
-                let mut vec = objects
-                    .iter()
-                    .map(|term| term.to_string())
-                    .collect::<Vec<String>>();
-                vec.sort();
-                vec
-            })
-            .unwrap(),
+            subjects: Set::new(hash_to_set(subjects)).unwrap(),
+            predicates: Set::new(hash_to_set(predicates)).unwrap(),
+            objects: Set::new(hash_to_set(objects)).unwrap(),
         }
     }
 

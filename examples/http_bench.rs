@@ -1,4 +1,4 @@
-use remote_hdt::{engine::EngineStrategy, remote_hdt::RemoteHDT};
+use remote_hdt::{engine::EngineStrategy, remote_hdt::RemoteHDT, utils::print_matrix};
 use std::time::Instant;
 
 const BENCHMARKS: [&str; 1] =
@@ -15,6 +15,6 @@ fn main() {
     let arr = arr.get_subject(vec![index]).unwrap();
     let after = before.elapsed();
 
-    println!("Result: {:?}", arr.values());
+    print_matrix(arr);
     println!("Elapsed time: {:.2?}", after)
 }

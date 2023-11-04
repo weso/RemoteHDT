@@ -1,7 +1,6 @@
 use nalgebra_sparse::CooMatrix;
 use nalgebra_sparse::CsrMatrix;
 use rayon::prelude::IntoParallelRefIterator;
-use rayon::prelude::ParallelBridge;
 use rayon::prelude::ParallelIterator;
 use rdf_rs::RdfParser;
 use serde_json::Map;
@@ -11,9 +10,10 @@ use sophia::graph::Graph;
 use sophia::triple::Triple;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use zarrs::array::codec::GzipCodec;
 use zarrs::array::Array;
 use zarrs::array::ArrayBuilder;
 use zarrs::array::DataType;
@@ -26,8 +26,10 @@ use zarrs::storage::ReadableStorageTraits;
 
 use crate::dictionary::Dictionary;
 use crate::error::RemoteHDTError;
+use crate::utils::term_to_value;
+use crate::utils::value_to_term;
 
-pub type ZarrArray = CsrMatrix<u32>;
+pub type ZarrArray = CsrMatrix<u8>;
 pub type RemoteHDTResult<T> = Result<T, RemoteHDTError>;
 
 const ARRAY_NAME: &str = "/group/RemoteHDT";
@@ -70,7 +72,7 @@ impl RemoteHDT {
         group.store_metadata()?;
 
         // 3. Import the RDF dump using `rdf-rs`
-        let graph: FastGraph = RdfParser::new(rdf_path).unwrap().graph;
+        let graph: Arc<FastGraph> = Arc::new(RdfParser::new(rdf_path).unwrap().graph);
         self.dictionary =
             Dictionary::from_set_terms(graph.subjects()?, graph.predicates()?, graph.objects()?);
 
@@ -82,45 +84,29 @@ impl RemoteHDT {
                 self.dictionary.subjects_size() as u64,
                 self.dictionary.objects_size() as u64,
             ],
-            DataType::UInt32, // TODO: Could this be changed to U8 or to U16?
+            DataType::UInt8,
             vec![1, self.dictionary.objects_size() as u64].into(),
-            FillValue::from(0u32), // TODO: the fill value is fine, but it can be improved
+            FillValue::from(0u8),
         )
         .dimension_names(Some(vec![
             DimensionName::new("Subject"),
             DimensionName::new("Object"),
         ]))
+        .bytes_to_bytes_codecs(vec![Box::new(GzipCodec::new(5)?)])
         .attributes({
             let mut attributes = Map::new();
             attributes.insert(
+                // TODO: create a function that does this in utils.rs
                 "subjects".to_string(),
-                self.dictionary
-                    .subjects()
-                    .iter()
-                    .par_bridge()
-                    .map(|(_, term)| std::str::from_utf8(&term).unwrap().to_string())
-                    .collect::<Vec<_>>()
-                    .into(),
+                term_to_value(self.dictionary.subjects()),
             );
             attributes.insert(
                 "predicates".to_string(),
-                self.dictionary
-                    .predicates()
-                    .iter()
-                    .par_bridge()
-                    .map(|(_, term)| std::str::from_utf8(&term).unwrap().to_string())
-                    .collect::<Vec<_>>()
-                    .into(),
+                term_to_value(self.dictionary.predicates()),
             );
             attributes.insert(
                 "objects".to_string(),
-                self.dictionary
-                    .objects()
-                    .iter()
-                    .par_bridge()
-                    .map(|(_, term)| std::str::from_utf8(&term).unwrap().to_string())
-                    .collect::<Vec<_>>()
-                    .into(),
+                term_to_value(self.dictionary.objects()),
             );
             attributes
         })
@@ -133,6 +119,11 @@ impl RemoteHDT {
         // the provided values (second vector). What's more, an offset can be set;
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
+        // TODO: something happens here that it is not using the whole CPU for larger
+        // datasets. I think it may be produced by the IO operations locking the
+        // usage of the CPU. It is the same for loading. Or possibly due to the
+        // number of chunk accesses...
+        // TODO: Goal --> 10,000-LUBM
         graph.subjects()?.par_iter().for_each(|subject| {
             let ans = self.create_array(graph.triples_with_s(subject));
             if let Ok(chunk_elements) = ans {
@@ -151,10 +142,10 @@ impl RemoteHDT {
         Ok(self)
     }
 
-    fn create_array(&self, triples: GTripleSource<FastGraph>) -> RemoteHDTResult<Vec<u32>> {
-        let slice: Vec<AtomicU32> = vec![0; self.dictionary.objects_size()]
-            .par_iter()
-            .map(|&n| AtomicU32::new(n))
+    fn create_array(&self, triples: GTripleSource<FastGraph>) -> RemoteHDTResult<Vec<u8>> {
+        let slice: Vec<AtomicU8> = vec![0; self.dictionary.objects_size()]
+            .iter()
+            .map(|&n| AtomicU8::new(n))
             .collect();
 
         triples.for_each(|result_triple| match result_triple {
@@ -167,13 +158,13 @@ impl RemoteHDT {
                     .dictionary
                     .get_object_idx(&triple.o().to_string())
                     .unwrap();
-                slice[oidx].store(pidx as u32, Ordering::Relaxed);
+                slice[oidx].store(pidx as u8, Ordering::Relaxed);
             }
             Err(_) => return,
         });
 
         Ok(slice
-            .par_iter()
+            .iter()
             .map(|elem| elem.load(Ordering::Relaxed))
             .collect())
     }
@@ -197,47 +188,21 @@ impl RemoteHDT {
         // 4. We get the attributes so we can obtain some values that we will need
         let attributes = arr.attributes();
 
-        let mut subjects = attributes
-            .get("subjects")
-            .unwrap()
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|term| term.as_str().unwrap())
-            .collect::<Vec<&str>>();
-        subjects.sort();
-
-        let mut predicates = attributes
-            .get("predicates")
-            .unwrap()
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|term| term.as_str().unwrap())
-            .collect::<Vec<&str>>();
-        predicates.sort();
-
-        let mut objects = attributes
-            .get("objects")
-            .unwrap()
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|term| term.as_str().unwrap())
-            .collect::<Vec<&str>>();
-        objects.sort();
+        let subjects = value_to_term(attributes.get("subjects").unwrap());
+        let predicates = value_to_term(attributes.get("subjects").unwrap());
+        let objects = value_to_term(attributes.get("subjects").unwrap());
 
         self.dictionary = Dictionary::from_vec_str(subjects, predicates, objects);
 
         // 5. We read the region from the Array we have just created
-        let mut matrix = CooMatrix::<u32>::new(arr.shape()[0] as usize, arr.shape()[1] as usize);
+        let mut matrix = CooMatrix::<u8>::new(arr.shape()[0] as usize, arr.shape()[1] as usize);
         self.dictionary.subjects().iter().for_each(|(i, _)| {
-            arr.retrieve_chunk_elements::<u32>(&[i as u64, 0])
+            arr.retrieve_chunk_elements::<u8>(&[i as u64, 0])
                 .unwrap()
                 .iter()
                 .enumerate()
                 .for_each(|(j, &value)| {
-                    if value != 0u32 {
+                    if value != 0u8 {
                         matrix.push(i, j, value);
                     }
                 })
@@ -245,27 +210,4 @@ impl RemoteHDT {
 
         Ok(CsrMatrix::from(&matrix))
     }
-}
-
-// TODO: this could be moved to a utils.rs module
-pub fn print(matrix: ZarrArray) {
-    if matrix.nrows() > 100 || matrix.ncols() > 100 {
-        println!("{:?}", matrix.values());
-        return;
-    }
-
-    let separator = format!("{}+", "+----".repeat(matrix.ncols()));
-
-    matrix.row_iter().for_each(|row| {
-        print!("{}\n|", separator);
-        for i in 0..row.ncols() {
-            match row.get_entry(i) {
-                Some(predicate) => print!(" {:^2} |", predicate.into_value()),
-                None => print!("{}", 0),
-            }
-        }
-        println!()
-    });
-
-    println!("{}", separator);
 }

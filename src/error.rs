@@ -1,5 +1,6 @@
 use std::convert::Infallible;
 use thiserror::Error;
+use zarrs::array::codec::bytes_to_bytes::gzip::GzipCompressionLevelError;
 use zarrs::array::ArrayCreateError;
 use zarrs::array::ArrayError;
 use zarrs::array_subset::IncompatibleDimensionalityError;
@@ -28,6 +29,8 @@ pub enum RemoteHDTError {
     HTTPCreate(#[from] HTTPStoreCreateError),
     #[error("The Path already exists, please provide an empty path")]
     PathExistsError,
+    #[error(transparent)]
+    GZipCompression(#[from] GzipCompressionLevelError),
 }
 
 #[derive(Error, Debug)]

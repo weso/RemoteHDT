@@ -1,7 +1,7 @@
 use std::fs::remove_dir_all;
 
 use nalgebra_sparse::{CooMatrix, CsrMatrix};
-use remote_hdt::remote_hdt::{print, RemoteHDT};
+use remote_hdt::{remote_hdt::RemoteHDT, utils::print_matrix};
 
 fn before() {
     let _ = remove_dir_all("root.zarr");
@@ -21,7 +21,7 @@ fn write_read_test() {
 
     let actual = remote_hdt.load("root.zarr").unwrap();
 
-    let mut expected = CooMatrix::<u32>::new(actual.nrows(), actual.ncols());
+    let mut expected = CooMatrix::<u8>::new(actual.nrows(), actual.ncols());
     expected.push(
         remote_hdt
             .dictionary
@@ -166,8 +166,8 @@ fn write_read_test() {
             .unwrap(),
     );
 
-    print(actual.to_owned());
-    print(CsrMatrix::from(&expected));
+    print_matrix(actual.to_owned());
+    print_matrix(CsrMatrix::from(&expected));
 
     assert_eq!(actual, CsrMatrix::from(&expected));
 
