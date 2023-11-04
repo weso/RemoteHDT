@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use fcsd::Set;
-use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use sophia::term::ArcTerm;
 
 use crate::utils::hash_to_set;
