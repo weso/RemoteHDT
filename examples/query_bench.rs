@@ -10,7 +10,7 @@ fn main() {
     let arr = remote_hdt.load(BENCHMARKS[0]).unwrap();
     let index = remote_hdt
         .dictionary
-        .get_subject_idx_unchecked("<http://www.Department14.University0.edu/GraduateStudent94>");
+        .get_subject_idx_unchecked("<http://www.University0.edu>");
 
     let before = Instant::now();
     let arr = arr.get_subject(vec![index]).unwrap();

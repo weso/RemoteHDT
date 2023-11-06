@@ -1,5 +1,6 @@
 use nalgebra_sparse::CooMatrix;
 use nalgebra_sparse::CsrMatrix;
+use rayon::iter::ParallelBridge;
 use rayon::prelude::IntoParallelRefIterator;
 use rayon::prelude::ParallelIterator;
 use rdf_rs::RdfParser;
@@ -13,12 +14,15 @@ use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::Mutex;
+use zarrs::array::codec::array_to_bytes::sharding::ShardingCodecBuilder;
 use zarrs::array::codec::GzipCodec;
 use zarrs::array::Array;
 use zarrs::array::ArrayBuilder;
 use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
+use zarrs::array_subset::ArraySubset;
 use zarrs::group::GroupBuilder;
 use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::store::HTTPStore;
@@ -79,24 +83,32 @@ impl RemoteHDT {
         // 4. Build the structure of the Array; as such, several parameters of it are
         // tweaked. Namely, the size of the array, the size of the chunks, the name
         // of the different dimensions and the default values
+        let shard_x = if self.dictionary.subjects_size() > 1024 {
+            self.dictionary.subjects_size() / 1024
+        } else {
+            1
+        };
+        let shard_shape = vec![shard_x as u64, self.dictionary.objects_size() as u64];
+        let inner_chunk_shape = vec![1, self.dictionary.objects_size() as u64];
+        let mut sharding_codec_builder = ShardingCodecBuilder::new(inner_chunk_shape.clone());
+        sharding_codec_builder.bytes_to_bytes_codecs(vec![Box::new(GzipCodec::new(5)?)]);
         let array = ArrayBuilder::new(
             vec![
                 self.dictionary.subjects_size() as u64,
                 self.dictionary.objects_size() as u64,
             ],
             DataType::UInt8,
-            vec![1, self.dictionary.objects_size() as u64].into(),
+            shard_shape.into(),
             FillValue::from(0u8),
         )
         .dimension_names(Some(vec![
             DimensionName::new("Subject"),
             DimensionName::new("Object"),
         ]))
-        .bytes_to_bytes_codecs(vec![Box::new(GzipCodec::new(5)?)])
+        .array_to_bytes_codec(Box::new(sharding_codec_builder.build()))
         .attributes({
             let mut attributes = Map::new();
             attributes.insert(
-                // TODO: create a function that does this in utils.rs
                 "subjects".to_string(),
                 term_to_value(self.dictionary.subjects()),
             );
@@ -119,25 +131,39 @@ impl RemoteHDT {
         // the provided values (second vector). What's more, an offset can be set;
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
-        // TODO: something happens here that it is not using the whole CPU for larger
-        // datasets. I think it may be produced by the IO operations locking the
-        // usage of the CPU. It is the same for loading. Or possibly due to the
-        // number of chunk accesses...
-        // TODO: Goal --> 10,000-LUBM
-        graph.subjects()?.par_iter().for_each(|subject| {
-            let ans = self.create_array(graph.triples_with_s(subject));
-            if let Ok(chunk_elements) = ans {
-                let _ = array.store_chunk_elements(
-                    &[
-                        self.dictionary
-                            .get_subject_idx_unchecked(&subject.to_string())
-                            as u64,
-                        0,
-                    ],
-                    chunk_elements.as_slice(),
-                );
-            }
-        });
+        let binding = graph.subjects()?;
+        let mut subjects = binding.par_iter().collect::<Vec<_>>();
+        subjects.sort();
+        subjects
+            .chunks(shard_x)
+            .enumerate()
+            .par_bridge()
+            .for_each(|(i, chunk)| {
+                let mut ans = Vec::<u8>::new();
+
+                chunk.iter().for_each(|&subject| {
+                    ans.append(&mut self.create_array(graph.triples_with_s(subject)).unwrap());
+                });
+
+                if array.shape()[0] % shard_x as u64 != 0
+                    && i == (array.chunk_grid_shape().unwrap()[0] - 1) as usize
+                {
+                    let _ = array
+                        .store_array_subset_elements(
+                            &ArraySubset::new_with_start_shape(
+                                vec![(i * shard_x + 1) as u64, 0],
+                                vec![chunk.len() as u64, array.shape()[1]],
+                            )
+                            .unwrap(),
+                            ans.as_slice(),
+                        )
+                        .unwrap();
+                } else {
+                    let _ = array
+                        .store_chunk_elements(&[i as u64, 0], ans.as_slice())
+                        .unwrap();
+                }
+            });
 
         Ok(self)
     }
@@ -189,25 +215,43 @@ impl RemoteHDT {
         let attributes = arr.attributes();
 
         let subjects = value_to_term(attributes.get("subjects").unwrap());
-        let predicates = value_to_term(attributes.get("subjects").unwrap());
-        let objects = value_to_term(attributes.get("subjects").unwrap());
+        let predicates = value_to_term(attributes.get("predicates").unwrap());
+        let objects = value_to_term(attributes.get("objects").unwrap());
 
         self.dictionary = Dictionary::from_vec_str(subjects, predicates, objects);
 
         // 5. We read the region from the Array we have just created
-        let mut matrix = CooMatrix::<u8>::new(arr.shape()[0] as usize, arr.shape()[1] as usize);
-        self.dictionary.subjects().iter().for_each(|(i, _)| {
-            arr.retrieve_chunk_elements::<u8>(&[i as u64, 0])
-                .unwrap()
-                .iter()
-                .enumerate()
-                .for_each(|(j, &value)| {
-                    if value != 0u8 {
-                        matrix.push(i, j, value);
-                    }
-                })
-        });
+        let matrix = Arc::new(Mutex::new(CooMatrix::<u8>::new(
+            arr.shape()[0] as usize,
+            arr.shape()[1] as usize,
+        )));
 
-        Ok(CsrMatrix::from(&matrix))
+        let number_of_chunks = arr.chunk_grid_shape().unwrap()[0] as usize;
+        (0..number_of_chunks)
+            .collect::<Vec<usize>>()
+            .par_iter()
+            .for_each(|&i| {
+                // Using this chunking strategy allows us to keep RAM usage low,
+                // as we load elements by row
+                arr.retrieve_chunk_elements::<u8>(&[i as u64, 0])
+                    .unwrap()
+                    .iter()
+                    .enumerate()
+                    .for_each(|(j, &value)| {
+                        if value != 0u8 {
+                            matrix.lock().unwrap().push(
+                                j / self.dictionary.objects_size()
+                                    + (i as usize * self.dictionary.subjects_size()
+                                        / number_of_chunks),
+                                j % self.dictionary.objects_size(),
+                                value,
+                            );
+                        }
+                    })
+            });
+
+        let x = matrix.lock().unwrap().to_owned();
+
+        Ok(CsrMatrix::from(&x))
     }
 }

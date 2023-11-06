@@ -19,9 +19,7 @@ fn write_read_test() {
 
     let _ = remote_hdt.serialize("root.zarr", "resources/rdf.nt");
 
-    let actual = remote_hdt.load("root.zarr").unwrap();
-
-    let mut expected = CooMatrix::<u8>::new(actual.nrows(), actual.ncols());
+    let mut expected = CooMatrix::<u8>::new(4, 9);
     expected.push(
         remote_hdt
             .dictionary
@@ -165,6 +163,8 @@ fn write_read_test() {
             .try_into()
             .unwrap(),
     );
+
+    let actual = remote_hdt.load("root.zarr").unwrap();
 
     print_matrix(actual.to_owned());
     print_matrix(CsrMatrix::from(&expected));
