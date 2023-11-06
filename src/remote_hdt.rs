@@ -83,8 +83,8 @@ impl RemoteHDT {
         // 4. Build the structure of the Array; as such, several parameters of it are
         // tweaked. Namely, the size of the array, the size of the chunks, the name
         // of the different dimensions and the default values
-        let shard_x = if self.dictionary.subjects_size() > 1024 {
-            self.dictionary.subjects_size() / 1024
+        let shard_x = if self.dictionary.subjects_size() > 10240 {
+            self.dictionary.subjects_size() / 10240
         } else {
             1
         };
