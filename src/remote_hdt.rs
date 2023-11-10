@@ -1,6 +1,5 @@
-use nalgebra_sparse::CooMatrix;
-use nalgebra_sparse::CsrMatrix;
 use rayon::iter::ParallelBridge;
+use rayon::prelude::IndexedParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
 use rayon::prelude::ParallelIterator;
 use rdf_rs::RdfParser;
@@ -9,12 +8,15 @@ use sophia::graph::inmem::sync::FastGraph;
 use sophia::graph::GTripleSource;
 use sophia::graph::Graph;
 use sophia::triple::Triple;
+use sprs::CsMat;
+use sprs::TriMat;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Instant;
 use zarrs::array::codec::array_to_bytes::sharding::ShardingCodecBuilder;
 use zarrs::array::codec::GzipCodec;
 use zarrs::array::Array;
@@ -33,7 +35,7 @@ use crate::error::RemoteHDTError;
 use crate::utils::term_to_value;
 use crate::utils::value_to_term;
 
-pub type ZarrArray = CsrMatrix<u8>;
+pub type ZarrArray = CsMat<u8>;
 pub type RemoteHDTResult<T> = Result<T, RemoteHDTError>;
 
 const ARRAY_NAME: &str = "/group/RemoteHDT";
@@ -220,38 +222,36 @@ impl RemoteHDT {
 
         self.dictionary = Dictionary::from_vec_str(subjects, predicates, objects);
 
-        // 5. We read the region from the Array we have just created
-        let matrix = Arc::new(Mutex::new(CooMatrix::<u8>::new(
+        let matrix = Mutex::new(TriMat::new((
             arr.shape()[0] as usize,
             arr.shape()[1] as usize,
         )));
 
+        let before = Instant::now();
+
         let number_of_chunks = arr.chunk_grid_shape().unwrap()[0] as usize;
-        (0..number_of_chunks)
-            .collect::<Vec<usize>>()
-            .par_iter()
-            .for_each(|&i| {
-                // Using this chunking strategy allows us to keep RAM usage low,
-                // as we load elements by row
-                arr.retrieve_chunk_elements::<u8>(&[i as u64, 0])
-                    .unwrap()
-                    .iter()
-                    .enumerate()
-                    .for_each(|(j, &value)| {
-                        if value != 0u8 {
-                            matrix.lock().unwrap().push(
-                                j / self.dictionary.objects_size()
-                                    + (i as usize * self.dictionary.subjects_size()
-                                        / number_of_chunks),
-                                j % self.dictionary.objects_size(),
-                                value,
-                            );
-                        }
-                    })
-            });
+        (0..number_of_chunks).par_bridge().for_each(|i| {
+            // Using this chunking strategy allows us to keep RAM usage low,
+            // as we load elements by row
+            arr.retrieve_chunk_elements::<u8>(&[i as u64, 0])
+                .unwrap()
+                .par_iter()
+                .enumerate()
+                .filter(|(_, &e)| e != 0)
+                .for_each(|(j, &value)| {
+                    let row = j / self.dictionary.objects_size()
+                        + (i * self.dictionary.subjects_size() / number_of_chunks);
+                    let col = j % self.dictionary.objects_size();
+                    matrix.lock().unwrap().add_triplet(row, col, value);
+                })
+        });
 
-        let x = matrix.lock().unwrap().to_owned();
+        let after = before.elapsed();
+        println!("Elapsed time: {:.2?}", after);
 
-        Ok(CsrMatrix::from(&x))
+        // We use a CSC Matrix because typically, RDF knowledge graphs tend to
+        // have more rows than columns
+        let x = matrix.lock().unwrap();
+        Ok(x.to_csc())
     }
 }
