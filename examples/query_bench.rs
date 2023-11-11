@@ -2,7 +2,7 @@ use remote_hdt::engine::EngineStrategy;
 use remote_hdt::remote_hdt::RemoteHDT;
 use std::time::Instant;
 
-const BENCHMARKS: [&str; 1] = ["10-lubm.zarr"];
+const BENCHMARKS: [&str; 1] = ["100-lubm.zarr"];
 
 fn main() {
     let mut remote_hdt = RemoteHDT::new();

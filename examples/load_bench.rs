@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use remote_hdt::remote_hdt::RemoteHDT;
 
-const BENCHMARKS: [&str; 1] = ["10-lubm"];
+const BENCHMARKS: [&str; 1] = ["100-lubm"];
 
 fn main() {
     let before = Instant::now();

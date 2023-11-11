@@ -14,13 +14,13 @@ pub fn term_to_value<'a>(terms: Set) -> Value {
         .into()
 }
 
-pub fn value_to_term<'a>(value: &'a Value) -> Vec<&'a str> {
+pub fn value_to_term<'a>(value: &'a Value) -> Vec<String> {
     let mut terms = value
         .as_array()
         .unwrap()
         .iter()
-        .map(|term| term.as_str().unwrap())
-        .collect::<Vec<&str>>();
+        .map(|term| term.as_str().unwrap().to_string())
+        .collect::<Vec<String>>();
     terms.sort();
     terms
 }

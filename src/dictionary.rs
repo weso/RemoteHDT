@@ -20,7 +20,11 @@ impl Dictionary {
         }
     }
 
-    pub fn from_vec_str(subjects: Vec<&str>, predicates: Vec<&str>, objects: Vec<&str>) -> Self {
+    pub fn from_vec_str(
+        subjects: &Vec<String>,
+        predicates: &Vec<String>,
+        objects: &Vec<String>,
+    ) -> Self {
         Dictionary {
             subjects: Set::new(subjects).unwrap(),
             predicates: Set::new(predicates).unwrap(),

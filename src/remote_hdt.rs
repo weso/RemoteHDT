@@ -1,19 +1,14 @@
 use rayon::iter::ParallelBridge;
-use rayon::prelude::IndexedParallelIterator;
-use rayon::prelude::IntoParallelRefIterator;
 use rayon::prelude::ParallelIterator;
 use rdf_rs::RdfParser;
 use serde_json::Map;
 use sophia::graph::inmem::sync::FastGraph;
-use sophia::graph::GTripleSource;
 use sophia::graph::Graph;
 use sophia::triple::Triple;
 use sprs::CsMat;
 use sprs::TriMat;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::AtomicU8;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -90,18 +85,13 @@ impl RemoteHDT {
         } else {
             1
         };
-        let shard_shape = vec![shard_x as u64, self.dictionary.objects_size() as u64];
-        let inner_chunk_shape = vec![1, self.dictionary.objects_size() as u64];
-        let mut sharding_codec_builder = ShardingCodecBuilder::new(inner_chunk_shape.clone());
+        let mut sharding_codec_builder = ShardingCodecBuilder::new(vec![1, 3]);
         sharding_codec_builder.bytes_to_bytes_codecs(vec![Box::new(GzipCodec::new(5)?)]);
         let array = ArrayBuilder::new(
-            vec![
-                self.dictionary.subjects_size() as u64,
-                self.dictionary.objects_size() as u64,
-            ],
-            DataType::UInt8,
-            shard_shape.into(),
-            FillValue::from(0u8),
+            vec![graph.triples().count() as u64, 3],
+            DataType::UInt64,
+            vec![shard_x as u64, 3].into(),
+            FillValue::from(0u64),
         )
         .dimension_names(Some(vec![
             DimensionName::new("Subject"),
@@ -133,18 +123,34 @@ impl RemoteHDT {
         // the provided values (second vector). What's more, an offset can be set;
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
-        let binding = graph.subjects()?;
-        let mut subjects = binding.par_iter().collect::<Vec<_>>();
-        subjects.sort();
-        subjects
+        graph
+            .triples()
+            .collect::<Vec<_>>()
             .chunks(shard_x)
             .enumerate()
-            .par_bridge()
             .for_each(|(i, chunk)| {
-                let mut ans = Vec::<u8>::new();
+                let mut ans = Vec::<u64>::new();
 
-                chunk.iter().for_each(|&subject| {
-                    ans.append(&mut self.create_array(graph.triples_with_s(subject)).unwrap());
+                chunk.iter().for_each(|triple| {
+                    if let Ok(triple) = triple {
+                        ans.push(
+                            self.dictionary
+                                .get_subject_idx_unchecked(&triple.s().to_string())
+                                as u64,
+                        );
+
+                        ans.push(
+                            self.dictionary
+                                .get_predicate_idx_unchecked(&triple.p().to_string())
+                                as u64,
+                        );
+
+                        ans.push(
+                            self.dictionary
+                                .get_object_idx_unchecked(&triple.o().to_string())
+                                as u64,
+                        );
+                    }
                 });
 
                 if array.shape()[0] % shard_x as u64 != 0
@@ -170,33 +176,6 @@ impl RemoteHDT {
         Ok(self)
     }
 
-    fn create_array(&self, triples: GTripleSource<FastGraph>) -> RemoteHDTResult<Vec<u8>> {
-        let slice: Vec<AtomicU8> = vec![0; self.dictionary.objects_size()]
-            .iter()
-            .map(|&n| AtomicU8::new(n))
-            .collect();
-
-        triples.for_each(|result_triple| match result_triple {
-            Ok(triple) => {
-                let pidx = self
-                    .dictionary
-                    .get_predicate_idx(&triple.p().to_string())
-                    .unwrap();
-                let oidx = self
-                    .dictionary
-                    .get_object_idx(&triple.o().to_string())
-                    .unwrap();
-                slice[oidx].store(pidx as u8, Ordering::Relaxed);
-            }
-            Err(_) => return,
-        });
-
-        Ok(slice
-            .iter()
-            .map(|elem| elem.load(Ordering::Relaxed))
-            .collect())
-    }
-
     pub fn load<'a>(&mut self, zarr_path: &'a str) -> RemoteHDTResult<ZarrArray> {
         let store = Arc::new(FilesystemStore::new(zarr_path)?);
         let arr = Array::new(store, ARRAY_NAME)?;
@@ -216,35 +195,34 @@ impl RemoteHDT {
         // 4. We get the attributes so we can obtain some values that we will need
         let attributes = arr.attributes();
 
-        let subjects = value_to_term(attributes.get("subjects").unwrap());
-        let predicates = value_to_term(attributes.get("predicates").unwrap());
-        let objects = value_to_term(attributes.get("objects").unwrap());
+        let subjects = &value_to_term(attributes.get("subjects").unwrap());
+        let predicates = &value_to_term(attributes.get("predicates").unwrap());
+        let objects = &value_to_term(attributes.get("objects").unwrap());
 
         self.dictionary = Dictionary::from_vec_str(subjects, predicates, objects);
 
-        let matrix = Mutex::new(TriMat::new((
-            arr.shape()[0] as usize,
-            arr.shape()[1] as usize,
-        )));
+        let rows = subjects.len();
+        let cols = objects.len();
+        let matrix = Mutex::new(TriMat::new((rows, cols)));
 
         let before = Instant::now();
 
-        let number_of_chunks = arr.chunk_grid_shape().unwrap()[0] as usize;
-        (0..number_of_chunks).par_bridge().for_each(|i| {
-            // Using this chunking strategy allows us to keep RAM usage low,
-            // as we load elements by row
-            arr.retrieve_chunk_elements::<u8>(&[i as u64, 0])
-                .unwrap()
-                .par_iter()
-                .enumerate()
-                .filter(|(_, &e)| e != 0)
-                .for_each(|(j, &value)| {
-                    let row = j / self.dictionary.objects_size()
-                        + (i * self.dictionary.subjects_size() / number_of_chunks);
-                    let col = j % self.dictionary.objects_size();
-                    matrix.lock().unwrap().add_triplet(row, col, value);
-                })
-        });
+        (0..arr.chunk_grid_shape().unwrap()[0] as usize)
+            .par_bridge()
+            .for_each(|i| {
+                // Using this chunking strategy allows us to keep RAM usage low,
+                // as we load elements by row
+                arr.retrieve_chunk_elements::<usize>(&[i as u64, 0])
+                    .unwrap()
+                    .chunks(3)
+                    .par_bridge()
+                    .for_each(|triple| {
+                        matrix
+                            .lock()
+                            .unwrap()
+                            .add_triplet(triple[0], triple[2], triple[1] as u8);
+                    })
+            });
 
         let after = before.elapsed();
         println!("Elapsed time: {:.2?}", after);
