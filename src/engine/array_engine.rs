@@ -1,6 +1,6 @@
 use sprs::{CsVec, TriMat};
 
-use crate::remote_hdt::ZarrArray;
+use crate::storage::ZarrArray;
 
 use super::{EngineResult, EngineStrategy};
 

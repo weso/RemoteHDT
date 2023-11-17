@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 
 use fcsd::Set;
-use sophia::term::ArcTerm;
 
-use crate::utils::hash_to_set;
+use super::utils::hash_to_set;
 
+#[derive(Clone)]
 pub struct Dictionary {
     subjects: Set,
     predicates: Set,
@@ -12,7 +12,7 @@ pub struct Dictionary {
 }
 
 impl Dictionary {
-    pub fn default() -> Self {
+    pub(crate) fn default() -> Self {
         Dictionary {
             subjects: Set::new(vec!["PlaceHolder"]).unwrap(),
             predicates: Set::new(vec!["PlaceHolder"]).unwrap(),
@@ -20,7 +20,7 @@ impl Dictionary {
         }
     }
 
-    pub fn from_vec_str(
+    pub(crate) fn from_vec_str(
         subjects: &Vec<String>,
         predicates: &Vec<String>,
         objects: &Vec<String>,
@@ -32,10 +32,10 @@ impl Dictionary {
         }
     }
 
-    pub fn from_set_terms(
-        subjects: HashSet<ArcTerm>,
-        predicates: HashSet<ArcTerm>,
-        objects: HashSet<ArcTerm>,
+    pub(crate) fn from_set_terms(
+        subjects: HashSet<String>,
+        predicates: HashSet<String>,
+        objects: HashSet<String>,
     ) -> Self {
         Dictionary {
             subjects: Set::new(hash_to_set(subjects)).unwrap(),

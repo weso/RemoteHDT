@@ -1,5 +1,5 @@
-use remote_hdt::remote_hdt::RemoteHDT;
+use remote_hdt::storage::{Layout, Storage};
 
 pub fn main() {
-    let _ = RemoteHDT::new().serialize("root.zarr", "examples/rdf_xml/rdf.rdf");
+    let _ = Storage::new(Layout::Tabular).serialize("root.zarr", "examples/rdf_xml/rdf.rdf");
 }

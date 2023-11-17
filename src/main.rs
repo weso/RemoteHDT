@@ -1,5 +1,5 @@
 use clap::Parser;
-use remote_hdt::remote_hdt::{RemoteHDT, RemoteHDTResult};
+use remote_hdt::storage::{Layout, Storage, StorageResult};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -13,8 +13,8 @@ struct Args {
     zarr: String,
 }
 
-fn main() -> RemoteHDTResult<()> {
+fn main() -> StorageResult<()> {
     let args: Args = Args::parse();
-    RemoteHDT::new().serialize(&args.zarr, &args.rdf)?;
+    Storage::new(Layout::Tabular).serialize(&args.zarr, &args.rdf)?;
     Ok(())
 }

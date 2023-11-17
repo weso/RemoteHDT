@@ -4,4 +4,4 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-sophia = { version = "0.7.2", features = [ "xml" ] }
+oxigraph = "0.3.20"

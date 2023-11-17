@@ -1,6 +1,6 @@
 use sprs::CsVec;
 
-use crate::{error::EngineError, remote_hdt::ZarrArray};
+use crate::{error::EngineError, storage::ZarrArray};
 
 pub mod array_engine;
 

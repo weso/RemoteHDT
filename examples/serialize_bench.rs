@@ -1,16 +1,16 @@
-use remote_hdt::remote_hdt::RemoteHDT;
+use remote_hdt::storage::{Layout, Storage};
 use std::time::Instant;
 
 #[cfg(not(target_env = "msvc"))]
 #[global_allocator]
 static ALLOCATOR: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-const BENCHMARKS: [&str; 1] = ["100-lubm"];
+const BENCHMARKS: [&str; 1] = ["1-lubm"];
 
 fn main() {
     let before = Instant::now();
 
-    let _ = RemoteHDT::new()
+    let _ = Storage::new(Layout::Tabular)
         .serialize(
             format!("{}.zarr", BENCHMARKS[0]).as_str(),
             format!("../lubm-uba-improved/out/{}.ttl", BENCHMARKS[0]).as_str(),

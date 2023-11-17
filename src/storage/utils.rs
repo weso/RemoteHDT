@@ -1,9 +1,11 @@
 use std::collections::HashSet;
 
 use fcsd::Set;
-use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
+use rayon::{
+    iter::IntoParallelRefIterator,
+    prelude::{ParallelBridge, ParallelIterator},
+};
 use serde_json::Value;
-use sophia::term::ArcTerm;
 
 pub fn term_to_value<'a>(terms: Set) -> Value {
     terms
@@ -25,7 +27,7 @@ pub fn value_to_term<'a>(value: &'a Value) -> Vec<String> {
     terms
 }
 
-pub fn hash_to_set(terms: HashSet<ArcTerm>) -> Vec<String> {
+pub fn hash_to_set(terms: HashSet<String>) -> Vec<String> {
     let mut vec = terms
         .par_iter()
         .map(|term| term.to_string())
