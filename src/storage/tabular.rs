@@ -1,7 +1,8 @@
+use oxigraph::model::graph::Iter;
+use oxigraph::model::Graph;
 use proc_macros::Layout;
 use rayon::iter::ParallelBridge;
 use rayon::prelude::ParallelIterator;
-use rdf_rs::RdfParser;
 use sprs::TriMat;
 use std::sync::Mutex;
 use zarrs::array::codec::array_to_bytes::sharding::ShardingCodecBuilder;
@@ -24,21 +25,11 @@ use super::private::LayoutOps;
 use super::StorageResult;
 use super::ZarrArray;
 
-#[derive(Layout)]
+#[derive(Default, Layout)]
 pub struct TabularLayout {
     dictionary: Dictionary,
-    triples_count: u64,
+    graph: Graph,
     rdf_path: String,
-}
-
-impl TabularLayout {
-    pub fn default() -> Self {
-        TabularLayout {
-            dictionary: Dictionary::default(),
-            triples_count: Default::default(),
-            rdf_path: Default::default(),
-        }
-    }
 }
 
 impl LayoutConfiguration for TabularLayout {
@@ -83,45 +74,11 @@ impl<R: ReadableStorageTraits, W: WritableStorageTraits> LayoutOps<R, W> for Tab
         // the provided values (second vector). What's more, an offset can be set;
         // that is, we can insert the created array with and X and Y shift. Lastly,
         // the region is written provided the aforementioned data and offset
-        let mut iter = RdfParser::new(&self.get_rdf_path())
-            .unwrap()
-            .parse()
-            .unwrap();
+        let mut iter = self.graph.iter();
         let mut count = 0;
         while let Ok(chunk) = iter.next_chunk::<1024>() {
             let mut ans = Vec::<u64>::new();
             chunk.iter().for_each(|triple| {
-                if let Ok(triple) = triple {
-                    ans.push(
-                        self.dictionary
-                            .get_subject_idx_unchecked(&triple.subject.to_string())
-                            as u64,
-                    );
-
-                    ans.push(
-                        self.dictionary
-                            .get_predicate_idx_unchecked(&triple.predicate.to_string())
-                            as u64,
-                    );
-
-                    ans.push(
-                        self.dictionary
-                            .get_object_idx_unchecked(&triple.object.to_string())
-                            as u64,
-                    );
-                }
-            });
-
-            let _ = arr
-                .store_chunk_elements(&[count, 0], ans.as_slice())
-                .unwrap();
-
-            count += 1;
-        }
-
-        let mut ans = Vec::<u64>::new();
-        for triple in iter {
-            if let Ok(triple) = triple {
                 ans.push(
                     self.dictionary
                         .get_subject_idx_unchecked(&triple.subject.to_string())
@@ -139,7 +96,32 @@ impl<R: ReadableStorageTraits, W: WritableStorageTraits> LayoutOps<R, W> for Tab
                         .get_object_idx_unchecked(&triple.object.to_string())
                         as u64,
                 );
-            }
+            });
+
+            let _ = arr
+                .store_chunk_elements(&[count, 0], ans.as_slice())
+                .unwrap();
+
+            count += 1;
+        }
+
+        let mut ans = Vec::<u64>::new();
+        for triple in iter {
+            ans.push(
+                self.dictionary
+                    .get_subject_idx_unchecked(&triple.subject.to_string()) as u64,
+            );
+
+            ans.push(
+                self.dictionary
+                    .get_predicate_idx_unchecked(&triple.predicate.to_string())
+                    as u64,
+            );
+
+            ans.push(
+                self.dictionary
+                    .get_object_idx_unchecked(&triple.object.to_string()) as u64,
+            );
         }
 
         let _ = arr

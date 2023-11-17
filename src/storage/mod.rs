@@ -1,7 +1,5 @@
-use rdf_rs::RdfParser;
 use serde_json::Map;
 use sprs::CsMat;
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -14,13 +12,15 @@ use zarrs::storage::ReadableStorageTraits;
 use zarrs::storage::WritableStorageTraits;
 
 use crate::error::RemoteHDTError;
+use crate::io::RdfParser;
 
 use self::dictionary::Dictionary;
+use self::matrix::MatrixLayout;
 use self::private::LayoutOps;
 use self::tabular::TabularLayout;
 use self::utils::term_to_value;
 
-mod dictionary;
+pub mod dictionary;
 pub mod matrix;
 pub mod tabular;
 mod utils;
@@ -31,6 +31,8 @@ pub type StorageResult<T> = Result<T, RemoteHDTError>;
 const ARRAY_NAME: &str = "/group/RemoteHDT";
 
 mod private {
+    use oxigraph::model::graph::Iter;
+    use oxigraph::model::Graph;
     use zarrs::array::codec::ArrayToBytesCodecTraits;
     use zarrs::array::codec::BytesToBytesCodecTraits;
     use zarrs::array::Array;
@@ -49,8 +51,8 @@ mod private {
     pub trait LayoutFields {
         fn set_dictionary(&mut self, dictionary: Dictionary);
         fn get_dictionary(&self) -> Dictionary;
-        fn set_triples_count(&mut self, triples_count: u64);
-        fn get_triples_count(&self) -> u64;
+        fn set_graph(&mut self, graph: Graph);
+        fn get_graph(&self) -> Iter<'_>;
         fn set_rdf_path(&mut self, rdf_path: String);
         fn get_rdf_path(&self) -> String;
     }
@@ -87,6 +89,7 @@ mod private {
 
 pub enum Layout {
     Tabular,
+    Matrix,
 }
 
 pub struct Storage<R: ReadableStorageTraits + Sized, W: WritableStorageTraits + Sized> {
@@ -96,9 +99,10 @@ pub struct Storage<R: ReadableStorageTraits + Sized, W: WritableStorageTraits + 
 impl<R: ReadableStorageTraits + Sized, W: WritableStorageTraits + Sized> Storage<R, W> {
     pub fn new(layout: Layout) -> Self {
         Storage {
-            layout: Box::new(match layout {
-                Layout::Tabular => TabularLayout::default(),
-            }),
+            layout: match layout {
+                Layout::Tabular => Box::new(TabularLayout::default()) as Box<dyn LayoutOps<R, W>>,
+                Layout::Matrix => Box::new(MatrixLayout::default()) as Box<dyn LayoutOps<R, W>>,
+            },
         }
     }
 
@@ -131,27 +135,10 @@ impl Storage<FilesystemStore, FilesystemStore> {
         group.store_metadata()?;
 
         // 3. Import the RDF dump using `rdf-rs`
-        let mut subjects = HashSet::<String>::new();
-        let mut predicates = HashSet::<String>::new();
-        let mut objects = HashSet::<String>::new();
-        let mut triples_count = 0;
+        let (graph, dictionary) = RdfParser::new(rdf_path).unwrap().parse().unwrap(); // TODO: remove unwraps
 
-        RdfParser::new(rdf_path)
-            .unwrap()
-            .parse()
-            .unwrap()
-            .for_each(|triple| {
-                if let Ok(triple) = triple {
-                    subjects.insert(triple.subject.to_string());
-                    predicates.insert(triple.predicate.to_string());
-                    objects.insert(triple.object.to_string());
-                    triples_count += 1;
-                }
-            });
-
-        self.layout
-            .set_dictionary(Dictionary::from_set_terms(subjects, predicates, objects));
-        self.layout.set_triples_count(triples_count);
+        self.layout.set_dictionary(dictionary);
+        self.layout.set_graph(graph);
         self.layout.set_rdf_path(rdf_path.to_string());
 
         // 4. Build the structure of the Array; as such, several parameters of it are
@@ -191,19 +178,30 @@ impl Storage<FilesystemStore, FilesystemStore> {
         Ok(self)
     }
 
-    pub fn load<'a>(&mut self, zarr_path: &'a str) -> StorageResult<ZarrArray> {
+    pub fn load<'a>(&mut self, zarr_path: &'a str) -> StorageResult<Array<FilesystemStore>> {
         let store = Arc::new(FilesystemStore::new(zarr_path)?);
         let arr = Array::new(store, ARRAY_NAME)?;
         self.layout.retrieve_attributes(&arr);
+        arr.retrieve_chunk(&vec![1, 0]).unwrap();
+        Ok(arr)
+    }
+
+    pub fn load_sparse<'a>(&mut self, zarr_path: &'a str) -> StorageResult<ZarrArray> {
+        let arr = self.load(zarr_path)?;
         self.layout.from_file(arr)
     }
 }
 
 impl Storage<HTTPStore, FilesystemStore> {
-    pub fn connect<'a>(&mut self, url: &'a str) -> StorageResult<ZarrArray> {
+    pub fn connect<'a>(&mut self, url: &'a str) -> StorageResult<Array<HTTPStore>> {
         let store = Arc::new(HTTPStore::new(url)?);
         let arr = Array::new(store, ARRAY_NAME)?;
         self.layout.retrieve_attributes(&arr);
+        Ok(arr)
+    }
+
+    pub fn connect_sparse<'a>(&mut self, url: &'a str) -> StorageResult<ZarrArray> {
+        let arr = self.connect(url)?;
         self.layout.from_file(arr)
     }
 }

@@ -11,15 +11,17 @@ pub struct Dictionary {
     objects: Set,
 }
 
-impl Dictionary {
-    pub(crate) fn default() -> Self {
+impl Default for Dictionary {
+    fn default() -> Self {
         Dictionary {
             subjects: Set::new(vec!["PlaceHolder"]).unwrap(),
             predicates: Set::new(vec!["PlaceHolder"]).unwrap(),
             objects: Set::new(vec!["PlaceHolder"]).unwrap(),
         }
     }
+}
 
+impl Dictionary {
     pub(crate) fn from_vec_str(
         subjects: &Vec<String>,
         predicates: &Vec<String>,

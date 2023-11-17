@@ -15,7 +15,7 @@ fn main() {
         .get_subject_idx_unchecked("<http://example.org/alan>");
 
     let before = Instant::now();
-    let _ = arr.get_subject(vec![index]).unwrap();
+    let _ = arr.get_subject(index).unwrap();
     let after = before.elapsed();
 
     println!("Elapsed time: {:.2?}", after)
