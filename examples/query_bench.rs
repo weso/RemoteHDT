@@ -4,7 +4,7 @@ use remote_hdt::{
 };
 use std::time::Instant;
 
-const BENCHMARKS: [&str; 1] = ["1-lubm.zarr"];
+const BENCHMARKS: [&str; 1] = ["10-lubm.zarr"];
 
 fn main() {
     let mut remote_hdt = Storage::new(Layout::Matrix);

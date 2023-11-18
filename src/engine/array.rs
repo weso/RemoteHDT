@@ -14,7 +14,7 @@ impl EngineStrategy<CsVec<u8>> for ZarrArray {
         unimplemented!()
     }
 
-    fn get_object(&self, indices: Vec<usize>) -> EngineResult<CsVec<u8>> {
+    fn get_object(&self, index: usize) -> EngineResult<CsVec<u8>> {
         unimplemented!()
     }
 }

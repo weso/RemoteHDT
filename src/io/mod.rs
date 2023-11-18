@@ -1,11 +1,16 @@
 use oxigraph::io::GraphFormat;
 use oxigraph::io::GraphParser;
-use oxigraph::model::Graph;
+use oxigraph::model::NamedNode;
+use oxigraph::model::Subject;
+use oxigraph::model::Term;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufReader;
 
 use crate::storage::dictionary::Dictionary;
+
+pub type Graph = HashMap<Subject, Vec<(NamedNode, Term)>>;
 
 pub struct RdfParser {
     path: String,
@@ -32,7 +37,7 @@ impl RdfParser {
     }
 
     pub fn parse(&self) -> Result<(Graph, Dictionary), String> {
-        let mut graph = Graph::new();
+        let mut graph  = Graph::new();
         let mut subjects = HashSet::new();
         let mut predicates = HashSet::new();
         let mut objects = HashSet::new();
@@ -49,10 +54,14 @@ impl RdfParser {
 
         for triple in triples {
             if let Ok(triple) = triple {
-                graph.insert(&triple);
-                subjects.insert(triple.subject.to_string());
-                predicates.insert(triple.predicate.to_string());
-                objects.insert(triple.object.to_string());
+                subjects.insert(triple.subject.to_owned().to_string());
+                predicates.insert(triple.predicate.to_owned().to_string());
+                objects.insert(triple.object.to_owned().to_string());
+                if let Some(value) = graph.get_mut(&triple.subject) {
+                    value.push((triple.predicate, triple.object));
+                } else {
+                    graph.insert(triple.subject, vec![(triple.predicate, triple.object)]);
+                }
             }
         }
 

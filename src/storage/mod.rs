@@ -31,8 +31,6 @@ pub type StorageResult<T> = Result<T, RemoteHDTError>;
 const ARRAY_NAME: &str = "/group/RemoteHDT";
 
 mod private {
-    use oxigraph::model::graph::Iter;
-    use oxigraph::model::Graph;
     use zarrs::array::codec::ArrayToBytesCodecTraits;
     use zarrs::array::codec::BytesToBytesCodecTraits;
     use zarrs::array::Array;
@@ -43,6 +41,8 @@ mod private {
     use zarrs::storage::ReadableStorageTraits;
     use zarrs::storage::WritableStorageTraits;
 
+    use crate::io::Graph;
+
     use super::dictionary::Dictionary;
     use super::utils::value_to_term;
     use super::StorageResult;
@@ -52,7 +52,7 @@ mod private {
         fn set_dictionary(&mut self, dictionary: Dictionary);
         fn get_dictionary(&self) -> Dictionary;
         fn set_graph(&mut self, graph: Graph);
-        fn get_graph(&self) -> Iter<'_>;
+        fn get_graph(&self) -> Graph;
         fn set_rdf_path(&mut self, rdf_path: String);
         fn get_rdf_path(&self) -> String;
     }
@@ -182,7 +182,6 @@ impl Storage<FilesystemStore, FilesystemStore> {
         let store = Arc::new(FilesystemStore::new(zarr_path)?);
         let arr = Array::new(store, ARRAY_NAME)?;
         self.layout.retrieve_attributes(&arr);
-        arr.retrieve_chunk(&vec![1, 0]).unwrap();
         Ok(arr)
     }
 

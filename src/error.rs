@@ -31,6 +31,8 @@ pub enum RemoteHDTError {
     PathExistsError,
     #[error(transparent)]
     GZipCompression(#[from] GzipCompressionLevelError),
+    #[error("The Graph you are trying to serialize is empty")]
+    EmptyGraph
 }
 
 #[derive(Error, Debug)]

@@ -21,8 +21,8 @@ pub fn storage(tokens: TokenStream) -> TokenStream {
                 self.graph = graph;
             }
 
-            fn get_graph(&self) -> Iter<'_> {
-                self.graph.iter()
+            fn get_graph(&self) -> Graph {
+                self.graph.to_owned()
             }
 
             fn set_rdf_path(&mut self, rdf_path: String) {

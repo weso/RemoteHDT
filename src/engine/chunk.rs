@@ -14,7 +14,8 @@ impl<T: ReadableStorageTraits> EngineStrategy<Vec<u8>> for Array<T> {
         unimplemented!()
     }
 
-    fn get_object(&self, indices: Vec<usize>) -> EngineResult<Vec<u8>> {
-        unimplemented!()
+    fn get_object(&self, index: usize) -> EngineResult<Vec<u8>> {
+        let ans = self.retrieve_chunk(&[0, index as u64])?;
+        Ok(ans)
     }
 }
