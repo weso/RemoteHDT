@@ -1,4 +1,3 @@
-use sprs::CsVec;
 use zarrs::{array::Array, storage::ReadableStorageTraits};
 
 use super::{EngineResult, EngineStrategy};
