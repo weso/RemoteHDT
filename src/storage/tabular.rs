@@ -1,59 +1,68 @@
-use oxigraph::model::NamedNode;
-use oxigraph::model::Subject;
-use oxigraph::model::Term;
-use proc_macros::Layout;
 use rayon::iter::ParallelBridge;
 use rayon::prelude::ParallelIterator;
 use sprs::TriMat;
 use std::sync::Mutex;
 use zarrs::array::codec::array_to_bytes::sharding::ShardingCodecBuilder;
 use zarrs::array::codec::ArrayToBytesCodecTraits;
-use zarrs::array::codec::BytesToBytesCodecTraits;
 use zarrs::array::codec::GzipCodec;
 use zarrs::array::Array;
 use zarrs::array::ChunkGrid;
 use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
-use zarrs::array_subset::ArraySubset;
+use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::ReadableStorageTraits;
-use zarrs::storage::WritableStorageTraits;
 
+use crate::dictionary::Dictionary;
 use crate::io::Graph;
 
-use super::dictionary::Dictionary;
-use super::private::LayoutConfiguration;
-use super::private::LayoutFields;
-use super::private::LayoutOps;
+use super::layout::Layout;
+use super::layout::LayoutOps;
+use super::ChunkingStrategy;
 use super::StorageResult;
 use super::ZarrArray;
 
-#[derive(Default, Layout)]
-pub struct TabularLayout {
-    dictionary: Dictionary,
-    graph: Graph,
-    rdf_path: String,
-}
+pub struct TabularLayout;
 
 impl TabularLayout {
-    fn insert_triple(subject: &Subject, predicate: NamedNode, object: Term, ans: &mut Vec<u64>, dictionary: &Dictionary) {
-        ans.push(dictionary.get_subject_idx_unchecked(&subject.to_string()) as u64);
-        ans.push(dictionary.get_predicate_idx_unchecked(&predicate.to_string()) as u64);
-        ans.push(dictionary.get_object_idx_unchecked(&object.to_string()) as u64);
+    fn insert_triple(
+        ans: &mut Vec<u64>,
+        subject: &String,
+        predicate: String,
+        object: String,
+        dictionary: &Dictionary,
+    ) {
+        ans.push(dictionary.get_subject_idx_unchecked(subject) as u64);
+        ans.push(dictionary.get_predicate_idx_unchecked(&predicate) as u64);
+        ans.push(dictionary.get_object_idx_unchecked(&object) as u64);
     }
 }
 
-impl LayoutConfiguration for TabularLayout {
-    fn shape(&self) -> Vec<u64> {
-        vec![self.get_dictionary().subjects_size() as u64, 3]
+impl<R> Layout<R, u64> for TabularLayout
+where
+    R: ReadableStorageTraits + Sized,
+{
+    fn shape(&self, _dictionary: &Dictionary, graph: &Graph) -> Vec<u64> {
+        vec![
+            graph
+                .iter()
+                .map(|(_, triples)| triples.len() as u64)
+                .reduce(|acc, a| acc + a)
+                .unwrap(),
+            3,
+        ]
     }
 
     fn data_type(&self) -> DataType {
         DataType::UInt64
     }
 
-    fn chunk_shape(&self) -> ChunkGrid {
-        vec![1024, 3].into() // TODO: make this a constant value
+    fn chunk_shape(
+        &self,
+        chunking_strategy: ChunkingStrategy,
+        _dictionary: &Dictionary,
+    ) -> ChunkGrid {
+        vec![chunking_strategy.into(), 3].into() // TODO: make this a constant value
     }
 
     fn fill_value(&self) -> FillValue {
@@ -67,60 +76,50 @@ impl LayoutConfiguration for TabularLayout {
         ])
     }
 
-    fn array_to_bytes_codec(&self) -> StorageResult<Box<dyn ArrayToBytesCodecTraits>> {
+    fn array_to_bytes_codec(
+        &self,
+        _dictionary: &Dictionary,
+    ) -> StorageResult<Box<dyn ArrayToBytesCodecTraits>> {
         let mut sharding_codec_builder = ShardingCodecBuilder::new(vec![1, 3]);
         sharding_codec_builder.bytes_to_bytes_codecs(vec![Box::new(GzipCodec::new(5)?)]);
         Ok(Box::new(sharding_codec_builder.build()))
     }
-
-    fn bytes_to_bytes_codec(&self) -> Vec<Box<dyn BytesToBytesCodecTraits>> {
-        Default::default()
-    }
 }
 
-impl<R: ReadableStorageTraits, W: WritableStorageTraits> LayoutOps<R, W> for TabularLayout {
-    fn into_file(&mut self, arr: Array<W>) -> StorageResult<()> {
-        let mut ans = Vec::<u64>::new();
-        let mut count = 0;
-        // 6. We insert some data into the Array provided a certain shape. That is,
-        // we are trying to create an array of a certain Shape (first vector), with
-        // the provided values (second vector). What's more, an offset can be set;
-        // that is, we can insert the created array with and X and Y shift. Lastly,
-        // the region is written provided the aforementioned data and offset
-        for (subject, triples) in self.get_graph() {
-            for triple in triples {
-                if ans.len() == 1024 {
-                    let _ = arr
-                        .store_chunk_elements(&[count, 0], ans.as_slice())
-                        .unwrap();
-                    ans = Vec::<u64>::new();
+impl<R> LayoutOps<R, u64> for TabularLayout
+where
+    R: ReadableStorageTraits + Sized,
+{
+    fn serialize_graph(
+        &mut self,
+        arr: &Array<FilesystemStore>,
+        dictionary: &Dictionary,
+        graph: Graph,
+        ans: &mut Vec<u64>,
+        mut count: u64,
+        chunk_x: u64,
+        chunk_y: u64,
+    ) -> StorageResult<u64> {
+        for (subject, triples) in graph {
+            for (predicate, object) in triples {
+                TabularLayout::insert_triple(ans, &subject, predicate, object, dictionary);
+
+                if ans.len() == (chunk_x * chunk_y) as usize {
+                    arr.store_chunk_elements(&[count, 0], ans.as_slice())
+                        .unwrap(); // TODO: remove unwrap
+                    ans.clear();
                     count += 1;
                 }
-
-                TabularLayout::insert_triple(&subject, triple.0, triple.1, &mut ans, &self.get_dictionary())
             }
         }
 
-        if ans.len() > 0 {
-            let _ = arr
-                .store_array_subset_elements(
-                    &ArraySubset::new_with_start_shape(
-                        vec![count * 1024, 0],
-                        vec![ans.len() as u64 / 3, 3],
-                    )
-                    .unwrap(),
-                    ans.as_slice(),
-                )
-                .unwrap();
-        }
-
-        Ok(())
+        Ok(count)
     }
 
-    fn from_file(&mut self, arr: Array<R>) -> StorageResult<ZarrArray> {
+    fn parse(&mut self, arr: Array<R>, dictionary: &Dictionary) -> StorageResult<ZarrArray> {
         let matrix = Mutex::new(TriMat::new((
-            self.get_dictionary().subjects_size(),
-            self.get_dictionary().objects_size(),
+            dictionary.subjects_size(),
+            dictionary.objects_size(),
         )));
         (0..arr.chunk_grid_shape().unwrap()[0] as usize)
             .par_bridge()

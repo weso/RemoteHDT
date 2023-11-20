@@ -1,4 +1,4 @@
-use sprs::{CsVec};
+use sprs::CsVec;
 
 use crate::storage::ZarrArray;
 

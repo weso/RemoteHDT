@@ -1,4 +1,4 @@
-use remote_hdt::storage::{Layout, Storage};
+use remote_hdt::storage::{matrix::MatrixLayout, ChunkingStrategy, LocalStorage};
 use std::time::Instant;
 
 #[cfg(not(target_env = "msvc"))]
@@ -10,10 +10,11 @@ const BENCHMARKS: [&str; 1] = ["10-lubm"];
 fn main() {
     let before = Instant::now();
 
-    let _ = Storage::new(Layout::Matrix)
+    let _ = LocalStorage::new(MatrixLayout)
         .serialize(
             format!("{}.zarr", BENCHMARKS[0]).as_str(),
             format!("../lubm-uba-improved/out/{}.ttl", BENCHMARKS[0]).as_str(),
+            ChunkingStrategy::Chunk,
         )
         .unwrap();
 

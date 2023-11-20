@@ -1,6 +1,6 @@
 use remote_hdt::{
     engine::EngineStrategy,
-    storage::{Layout, Storage},
+    storage::{matrix::MatrixLayout, HTTPStorage},
 };
 use std::time::Instant;
 
@@ -8,7 +8,7 @@ const BENCHMARKS: [&str; 1] =
     ["https://raw.githubusercontent.com/weso/RemoteHDT/master/resources/root.zarr"];
 
 fn main() {
-    let mut remote_hdt = Storage::new(Layout::Tabular);
+    let mut remote_hdt = HTTPStorage::new(MatrixLayout);
     let arr = remote_hdt.connect(BENCHMARKS[0]).unwrap();
     let index = remote_hdt
         .get_dictionary()

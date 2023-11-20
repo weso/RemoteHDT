@@ -6,8 +6,9 @@ use rayon::{
     prelude::{ParallelBridge, ParallelIterator},
 };
 use serde_json::Value;
+use zarrs::array::Array;
 
-pub fn term_to_value<'a>(terms: Set) -> Value {
+pub fn term_to_value(terms: Set) -> Value {
     terms
         .iter()
         .par_bridge()
@@ -16,7 +17,7 @@ pub fn term_to_value<'a>(terms: Set) -> Value {
         .into()
 }
 
-pub fn value_to_term<'a>(value: &'a Value) -> Vec<String> {
+pub fn value_to_term(value: &Value) -> Vec<String> {
     let mut terms = value
         .as_array()
         .unwrap()
@@ -34,4 +35,24 @@ pub fn hash_to_set(terms: HashSet<String>) -> Vec<String> {
         .collect::<Vec<_>>();
     vec.sort();
     vec
+}
+
+pub fn subjects_per_chunk<T>(arr: &Array<T>) -> u64 {
+    match arr.chunk_grid().chunk_shape(&[0, 0], arr.shape()) {
+        Ok(shape) => match shape {
+            Some(chunk_shape) => chunk_shape[0],
+            None => todo!(),
+        },
+        Err(_) => todo!(),
+    }
+}
+
+pub fn objects_per_chunk<T>(arr: &Array<T>) -> u64 {
+    match arr.chunk_grid().chunk_shape(&[0, 0], arr.shape()) {
+        Ok(shape) => match shape {
+            Some(chunk_shape) => chunk_shape[1],
+            None => todo!(),
+        },
+        Err(_) => todo!(),
+    }
 }

@@ -1,70 +1,63 @@
-use oxigraph::model::NamedNode;
-use oxigraph::model::Term;
-use proc_macros::Layout;
 use rayon::iter::ParallelBridge;
 use rayon::prelude::ParallelIterator;
 use sprs::TriMat;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
+use zarrs::array::codec::array_to_bytes::sharding::ShardingCodecBuilder;
 use zarrs::array::codec::ArrayToBytesCodecTraits;
-use zarrs::array::codec::BytesCodec;
-use zarrs::array::codec::BytesToBytesCodecTraits;
 use zarrs::array::codec::GzipCodec;
 use zarrs::array::Array;
 use zarrs::array::ChunkGrid;
 use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
+use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::ReadableStorageTraits;
-use zarrs::storage::WritableStorageTraits;
 
-use super::dictionary::Dictionary;
-use super::private::LayoutConfiguration;
-use super::private::LayoutFields;
-use super::private::LayoutOps;
+use super::layout::Layout;
+use super::layout::LayoutOps;
+use super::ChunkingStrategy;
 use super::StorageResult;
 use super::ZarrArray;
 
+use crate::dictionary::Dictionary;
 use crate::io::Graph;
+use crate::utils::subjects_per_chunk;
 
-#[derive(Default, Layout)]
-pub struct MatrixLayout {
-    dictionary: Dictionary,
-    graph: Graph,
-    rdf_path: String,
-}
+pub struct MatrixLayout;
 
 impl MatrixLayout {
-    fn create_array<'a>(&self, triples: &Vec<(NamedNode, Term)>) -> Result<Vec<u8>, String> {
-        let slice: Vec<AtomicU8> = vec![0u8; self.dictionary.objects_size()]
+    fn append_slice(ans: &mut Vec<u8>, triples: &[(String, String)], dictionary: &Dictionary) {
+        let slice: Vec<AtomicU8> = vec![0u8; dictionary.objects_size()]
             .iter()
             .map(|&n| AtomicU8::new(n))
             .collect();
 
         triples.iter().for_each(|(predicate, object)| {
-            let pidx = self
-                .get_dictionary()
-                .get_predicate_idx_unchecked(&predicate.to_string());
-            let oidx = self
-                .get_dictionary()
-                .get_object_idx_unchecked(&object.to_string());
+            let pidx = dictionary.get_predicate_idx_unchecked(&predicate.to_string());
+            let oidx = dictionary.get_object_idx_unchecked(&object.to_string());
 
             slice[oidx].store(pidx as u8, Ordering::Relaxed);
         });
 
-        Ok(slice
-            .iter()
-            .map(|elem| elem.load(Ordering::Relaxed))
-            .collect())
+        ans.append(
+            &mut slice
+                .iter()
+                .map(|elem| elem.load(Ordering::Relaxed))
+                .collect::<Vec<u8>>(),
+        )
     }
 }
 
-impl LayoutConfiguration for MatrixLayout {
-    fn shape(&self) -> Vec<u64> {
+impl<R> Layout<R, u8> for MatrixLayout
+where
+    R: ReadableStorageTraits + Sized,
+{
+    fn shape(&self, dictionary: &Dictionary, _graph: &Graph) -> Vec<u64> {
         vec![
-            self.get_dictionary().subjects_size() as u64,
-            self.get_dictionary().objects_size() as u64,
+            dictionary.subjects_size() as u64,
+            dictionary.objects_size() as u64,
         ]
     }
 
@@ -72,8 +65,12 @@ impl LayoutConfiguration for MatrixLayout {
         DataType::UInt8
     }
 
-    fn chunk_shape(&self) -> ChunkGrid {
-        vec![1, self.get_dictionary().objects_size() as u64].into()
+    fn chunk_shape(
+        &self,
+        chunking_strategy: ChunkingStrategy,
+        dictionary: &Dictionary,
+    ) -> ChunkGrid {
+        vec![chunking_strategy.into(), dictionary.objects_size() as u64].into()
     }
 
     fn fill_value(&self) -> FillValue {
@@ -87,48 +84,78 @@ impl LayoutConfiguration for MatrixLayout {
         ])
     }
 
-    fn array_to_bytes_codec(&self) -> StorageResult<Box<dyn ArrayToBytesCodecTraits>> {
-        Ok(Box::<BytesCodec>::default())
-    }
-
-    fn bytes_to_bytes_codec(&self) -> Vec<Box<dyn BytesToBytesCodecTraits>> {
-        vec![Box::new(GzipCodec::new(5).unwrap())]
+    fn array_to_bytes_codec(
+        &self,
+        dictionary: &Dictionary,
+    ) -> StorageResult<Box<dyn ArrayToBytesCodecTraits>> {
+        let mut sharding_codec_builder =
+            ShardingCodecBuilder::new(vec![1, dictionary.objects_size() as u64]);
+        sharding_codec_builder.bytes_to_bytes_codecs(vec![Box::new(GzipCodec::new(5)?)]);
+        Ok(Box::new(sharding_codec_builder.build()))
     }
 }
 
-impl<R: ReadableStorageTraits, W: WritableStorageTraits> LayoutOps<R, W> for MatrixLayout {
-    fn into_file(&mut self, arr: Array<W>) -> StorageResult<()> {
-        self.get_graph().iter().for_each(|(subject, triples)| {
-            let i = self.get_dictionary().get_subject_idx_unchecked(&subject.to_string()) as u64;
-            let chunk = self.create_array(triples).unwrap();
-            let _ = arr.store_chunk_elements(&vec![i, 0], chunk.as_slice());
-        });
+impl<R> LayoutOps<R, u8> for MatrixLayout
+where
+    R: ReadableStorageTraits + Sized,
+{
+    fn serialize_graph(
+        &mut self,
+        arr: &Array<FilesystemStore>,
+        dictionary: &Dictionary,
+        graph: Graph,
+        ans: &mut Vec<u8>,
+        mut count: u64,
+        chunk_x: u64,
+        _chunk_y: u64,
+    ) -> StorageResult<u64> {
+        dictionary
+            .subjects()
+            .iter()
+            .for_each(|(_, subject): (usize, Vec<u8>)| {
+                let subject = &std::str::from_utf8(&subject).unwrap().to_string();
+                let triples = graph.get(subject).unwrap();
 
-        Ok(())
+                MatrixLayout::append_slice(ans, triples, dictionary);
+
+                if (count + 1) % chunk_x == 0 {
+                    arr.store_chunk_elements(&[count, 0], ans.as_slice())
+                        .unwrap();
+                    ans.clear();
+                    count += 1
+                }
+            });
+
+        Ok(count)
     }
 
-    fn from_file(&mut self, arr: Array<R>) -> StorageResult<ZarrArray> {
+    fn parse(&mut self, arr: Array<R>, dictionary: &Dictionary) -> StorageResult<ZarrArray> {
         let matrix = Mutex::new(TriMat::new((
-            self.get_dictionary().subjects_size(),
-            self.get_dictionary().objects_size(),
+            dictionary.subjects_size(),
+            dictionary.objects_size(),
         )));
-        (0..self.get_dictionary().subjects_size())
+        (0..arr.chunk_grid_shape().unwrap()[0])
             .par_bridge()
-            .for_each(|subject_idx| {
+            .for_each(|i| {
                 // Using this chunking strategy allows us to keep RAM usage low,
                 // as we load elements by row
-                arr.retrieve_chunk_elements::<u8>(&[subject_idx as u64, 0])
+                arr.retrieve_chunk_elements::<u8>(&[i, 0])
                     .unwrap()
-                    .iter()
+                    .chunks(dictionary.objects_size())
                     .enumerate()
-                    .for_each(|(object_idx, &predicate_idx)| {
-                        if predicate_idx != 0 {
-                            matrix.lock().unwrap().add_triplet(
-                                subject_idx,
-                                object_idx,
-                                predicate_idx,
-                            );
-                        }
+                    .for_each(|(subject_idx, chunk)| {
+                        chunk
+                            .iter()
+                            .enumerate()
+                            .for_each(|(object_idx, &predicate_idx)| {
+                                if predicate_idx != 0 {
+                                    matrix.lock().unwrap().add_triplet(
+                                        subject_idx + (i * subjects_per_chunk(&arr)) as usize,
+                                        object_idx,
+                                        predicate_idx,
+                                    );
+                                }
+                            })
                     })
             });
 

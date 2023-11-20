@@ -1,3 +1,4 @@
+use safe_transmute::TriviallyTransmutable;
 use serde_json::Map;
 use sprs::CsMat;
 use std::path::PathBuf;
@@ -8,115 +9,68 @@ use zarrs::array::ArrayBuilder;
 use zarrs::group::GroupBuilder;
 use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::store::HTTPStore;
-use zarrs::storage::ReadableStorageTraits;
-use zarrs::storage::WritableStorageTraits;
 
+use crate::dictionary::Dictionary;
 use crate::error::RemoteHDTError;
 use crate::io::RdfParser;
+use crate::utils::term_to_value;
 
-use self::dictionary::Dictionary;
-use self::matrix::MatrixLayout;
-use self::private::LayoutOps;
-use self::tabular::TabularLayout;
-use self::utils::term_to_value;
+use self::layout::Layout;
 
-pub mod dictionary;
+mod layout;
 pub mod matrix;
 pub mod tabular;
-mod utils;
 
 pub type ZarrArray = CsMat<u8>;
 pub type StorageResult<T> = Result<T, RemoteHDTError>;
+pub type LocalStorage<T> = Storage<FilesystemStore, T>;
+pub type HTTPStorage<T> = Storage<HTTPStore, T>;
 
 const ARRAY_NAME: &str = "/group/RemoteHDT";
 
-mod private {
-    use zarrs::array::codec::ArrayToBytesCodecTraits;
-    use zarrs::array::codec::BytesToBytesCodecTraits;
-    use zarrs::array::Array;
-    use zarrs::array::ChunkGrid;
-    use zarrs::array::DataType;
-    use zarrs::array::DimensionName;
-    use zarrs::array::FillValue;
-    use zarrs::storage::ReadableStorageTraits;
-    use zarrs::storage::WritableStorageTraits;
+pub enum ChunkingStrategy {
+    Chunk,
+    Sharding(u64),
+}
 
-    use crate::io::Graph;
-
-    use super::dictionary::Dictionary;
-    use super::utils::value_to_term;
-    use super::StorageResult;
-    use super::ZarrArray;
-
-    pub trait LayoutFields {
-        fn set_dictionary(&mut self, dictionary: Dictionary);
-        fn get_dictionary(&self) -> Dictionary;
-        fn set_graph(&mut self, graph: Graph);
-        fn get_graph(&self) -> Graph;
-        fn set_rdf_path(&mut self, rdf_path: String);
-        fn get_rdf_path(&self) -> String;
-    }
-
-    pub trait LayoutConfiguration {
-        fn shape(&self) -> Vec<u64>;
-        fn data_type(&self) -> DataType;
-        fn chunk_shape(&self) -> ChunkGrid;
-        fn fill_value(&self) -> FillValue;
-        fn dimension_names(&self) -> Option<Vec<DimensionName>>;
-        fn array_to_bytes_codec(&self) -> StorageResult<Box<dyn ArrayToBytesCodecTraits>>;
-        fn bytes_to_bytes_codec(&self) -> Vec<Box<dyn BytesToBytesCodecTraits>>;
-    }
-
-    pub trait LayoutOps<R: ReadableStorageTraits + Sized, W: WritableStorageTraits + Sized>:
-        LayoutFields + LayoutConfiguration
-    {
-        fn retrieve_attributes(&mut self, arr: &Array<R>) {
-            // 4. We get the attributes so we can obtain some values that we will need
-            let attributes = arr.attributes();
-
-            let subjects = &value_to_term(attributes.get("subjects").unwrap());
-            let predicates = &value_to_term(attributes.get("predicates").unwrap());
-            let objects = &value_to_term(attributes.get("objects").unwrap());
-
-            self.set_dictionary(Dictionary::from_vec_str(subjects, predicates, objects))
+impl From<ChunkingStrategy> for u64 {
+    fn from(value: ChunkingStrategy) -> Self {
+        match value {
+            ChunkingStrategy::Chunk => 1,
+            ChunkingStrategy::Sharding(size) => size,
         }
-
-        fn into_file(&mut self, arr: Array<W>) -> StorageResult<()>;
-
-        fn from_file(&mut self, arr: Array<R>) -> StorageResult<ZarrArray>;
     }
 }
 
-pub enum Layout {
-    Tabular,
-    Matrix,
+pub struct Storage<R, T> {
+    dictionary: Dictionary,
+    layout: Box<dyn Layout<R, T>>,
 }
 
-pub struct Storage<R: ReadableStorageTraits + Sized, W: WritableStorageTraits + Sized> {
-    layout: Box<dyn LayoutOps<R, W>>,
-}
-
-impl<R: ReadableStorageTraits + Sized, W: WritableStorageTraits + Sized> Storage<R, W> {
-    pub fn new(layout: Layout) -> Self {
+impl<R, T: TriviallyTransmutable> Storage<R, T> {
+    pub fn new(layout: impl Layout<R, T> + 'static) -> Self {
         Storage {
-            layout: match layout {
-                Layout::Tabular => Box::new(TabularLayout::default()) as Box<dyn LayoutOps<R, W>>,
-                Layout::Matrix => Box::new(MatrixLayout::default()) as Box<dyn LayoutOps<R, W>>,
-            },
+            dictionary: Default::default(),
+            layout: Box::new(layout),
         }
     }
 
     pub fn get_dictionary(&self) -> Dictionary {
-        self.layout.get_dictionary()
+        self.dictionary.to_owned()
     }
 }
 
-impl Storage<FilesystemStore, FilesystemStore> {
+impl<T: TriviallyTransmutable> LocalStorage<T> {
     /// # Errors
     /// Returns [`PathExistsError`] if the provided path already exists; that is,
     /// the user is trying to store the RDF dataset in an occupied storage. This
     /// is due to the fact that the user may incur in an undefined state.
-    pub fn serialize<'a>(&mut self, zarr_path: &'a str, rdf_path: &'a str) -> StorageResult<&Self> {
+    pub fn serialize<'a>(
+        &mut self,
+        zarr_path: &'a str,
+        rdf_path: &'a str,
+        chunking_strategy: ChunkingStrategy,
+    ) -> StorageResult<&Self> {
         // 1. The first thing that should be done is to check whether the path
         // in which we are trying to store the dump already exists or not. If it
         // does, we should stop the execution, preventing the user from losing
@@ -136,71 +90,63 @@ impl Storage<FilesystemStore, FilesystemStore> {
 
         // 3. Import the RDF dump using `rdf-rs`
         let (graph, dictionary) = RdfParser::new(rdf_path).unwrap().parse().unwrap(); // TODO: remove unwraps
-
-        self.layout.set_dictionary(dictionary);
-        self.layout.set_graph(graph);
-        self.layout.set_rdf_path(rdf_path.to_string());
+        self.dictionary = dictionary;
 
         // 4. Build the structure of the Array; as such, several parameters of it are
         // tweaked. Namely, the size of the array, the size of the chunks, the name
         // of the different dimensions and the default values
         let arr = ArrayBuilder::new(
-            self.layout.shape(),
+            self.layout.shape(&self.dictionary, &graph),
             self.layout.data_type(),
-            self.layout.chunk_shape(),
+            self.layout.chunk_shape(chunking_strategy, &self.dictionary),
             self.layout.fill_value(),
         )
         .dimension_names(self.layout.dimension_names())
-        .bytes_to_bytes_codecs(self.layout.bytes_to_bytes_codec())
-        .array_to_bytes_codec(self.layout.array_to_bytes_codec()?)
+        .array_to_bytes_codec(self.layout.array_to_bytes_codec(&self.dictionary)?)
         .attributes({
             let mut attributes = Map::new();
+            attributes.insert("subjects".into(), term_to_value(self.dictionary.subjects()));
             attributes.insert(
-                "subjects".to_string(),
-                term_to_value(self.layout.get_dictionary().subjects()),
+                "predicates".into(),
+                term_to_value(self.dictionary.predicates()),
             );
-            attributes.insert(
-                "predicates".to_string(),
-                term_to_value(self.layout.get_dictionary().predicates()),
-            );
-            attributes.insert(
-                "objects".to_string(),
-                term_to_value(self.layout.get_dictionary().objects()),
-            );
+            attributes.insert("objects".into(), term_to_value(self.dictionary.objects()));
             attributes
-        })
+        }) // TODO: one attribute should be the Layout
         .build(store, ARRAY_NAME)?;
 
         arr.store_metadata()?;
 
-        self.layout.into_file(arr)?;
+        self.layout.serialize(arr, &self.dictionary, graph)?;
 
         Ok(self)
     }
 
-    pub fn load<'a>(&mut self, zarr_path: &'a str) -> StorageResult<Array<FilesystemStore>> {
+    pub fn load(&mut self, zarr_path: &str) -> StorageResult<Array<FilesystemStore>> {
         let store = Arc::new(FilesystemStore::new(zarr_path)?);
         let arr = Array::new(store, ARRAY_NAME)?;
-        self.layout.retrieve_attributes(&arr);
+        self.dictionary = self.layout.retrieve_attributes(&arr);
         Ok(arr)
     }
 
-    pub fn load_sparse<'a>(&mut self, zarr_path: &'a str) -> StorageResult<ZarrArray> {
+    // TODO: improve this naming convention
+    pub fn load_sparse(&mut self, zarr_path: &str) -> StorageResult<ZarrArray> {
         let arr = self.load(zarr_path)?;
-        self.layout.from_file(arr)
+        self.layout.parse(arr, &self.dictionary)
     }
 }
 
-impl Storage<HTTPStore, FilesystemStore> {
-    pub fn connect<'a>(&mut self, url: &'a str) -> StorageResult<Array<HTTPStore>> {
+impl<T: TriviallyTransmutable> HTTPStorage<T> {
+    pub fn connect(&mut self, url: &str) -> StorageResult<Array<HTTPStore>> {
         let store = Arc::new(HTTPStore::new(url)?);
         let arr = Array::new(store, ARRAY_NAME)?;
-        self.layout.retrieve_attributes(&arr);
+        self.dictionary = self.layout.retrieve_attributes(&arr);
         Ok(arr)
     }
 
-    pub fn connect_sparse<'a>(&mut self, url: &'a str) -> StorageResult<ZarrArray> {
+    // TODO: improve this naming convention
+    pub fn connect_sparse(&mut self, url: &str) -> StorageResult<ZarrArray> {
         let arr = self.connect(url)?;
-        self.layout.from_file(arr)
+        self.layout.parse(arr, &self.dictionary)
     }
 }

@@ -12,8 +12,8 @@ thiserror = "1.0.50"
 fcsd = "0.2.0"
 rayon = "1.8.0"
 sprs = "0.11.1"
-proc_macros = { path = "proc_macros" }
 oxigraph = "0.3.20"
+safe-transmute = "0.11.2"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 jemallocator = "0.5.0"

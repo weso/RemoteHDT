@@ -1,5 +1,5 @@
 use clap::Parser;
-use remote_hdt::storage::{Layout, Storage, StorageResult};
+use remote_hdt::storage::{tabular::TabularLayout, ChunkingStrategy, LocalStorage, StorageResult};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -15,6 +15,6 @@ struct Args {
 
 fn main() -> StorageResult<()> {
     let args: Args = Args::parse();
-    Storage::new(Layout::Tabular).serialize(&args.zarr, &args.rdf)?;
+    LocalStorage::new(TabularLayout).serialize(&args.zarr, &args.rdf, ChunkingStrategy::Chunk)?;
     Ok(())
 }

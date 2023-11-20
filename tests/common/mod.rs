@@ -1,9 +1,18 @@
-use remote_hdt::storage::dictionary::Dictionary;
+#![allow(dead_code)]
+
 use sprs::{CsMat, TriMat};
 use std::fs::{remove_dir_all, File};
 
-pub(crate) const TABULAR_ZARR: &str = "tabular.zarr";
-pub(crate) const MATRIX_ZARR: &str = "matrix.zarr";
+use remote_hdt::dictionary::Dictionary;
+
+pub const TABULAR_ZARR: &str = "tabular.zarr";
+pub const MATRIX_ZARR: &str = "matrix.zarr";
+pub const SHARDING_TABULAR_ZARR: &str = "sharding_tabular.zarr";
+pub const SHARDING_MATRIX_ZARR: &str = "sharding_matrix.zarr";
+pub const LARGER_ZARR: &str = "larger.zarr";
+pub const GET_SUBJECT_MATRIX_ZARR: &str = "get_subject_matrix.zarr";
+pub const GET_SUBJECT_SHARDING_ZARR: &str = "get_subject_sharding.zarr";
+pub const GET_SUBJECT_TABULAR_ZARR: &str = "get_subject_tabular.zarr";
 
 pub fn setup(path: &str) {
     if let Ok(_) = File::open(path) {
@@ -19,7 +28,7 @@ pub enum Subject {
 }
 
 impl Subject {
-    fn get_idx(self, dictionary: &Dictionary) -> usize {
+    pub(crate) fn get_idx(self, dictionary: &Dictionary) -> usize {
         dictionary.get_subject_idx_unchecked(self.into())
     }
 }

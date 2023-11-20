@@ -1,7 +1,11 @@
-use remote_hdt::storage::{Layout, Storage};
+use remote_hdt::storage::{tabular::TabularLayout, ChunkingStrategy, LocalStorage};
 
 pub fn main() {
-    let _ = Storage::new(Layout::Tabular)
-        .serialize("root.zarr", "examples/ntriples/rdf.nt")
+    LocalStorage::new(TabularLayout)
+        .serialize(
+            "root.zarr",
+            "examples/ntriples/rdf.nt",
+            ChunkingStrategy::Chunk,
+        )
         .unwrap();
 }

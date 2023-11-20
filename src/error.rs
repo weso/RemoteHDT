@@ -32,7 +32,7 @@ pub enum RemoteHDTError {
     #[error(transparent)]
     GZipCompression(#[from] GzipCompressionLevelError),
     #[error("The Graph you are trying to serialize is empty")]
-    EmptyGraph
+    EmptyGraph,
 }
 
 #[derive(Error, Debug)]
@@ -41,4 +41,6 @@ pub enum EngineError {
     Dimensionality(#[from] IncompatibleDimensionalityError),
     #[error(transparent)]
     Array(#[from] ArrayError),
+    #[error("Operation error")]
+    OperationError,
 }
