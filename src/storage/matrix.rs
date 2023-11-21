@@ -1,5 +1,3 @@
-use rayon::iter::ParallelBridge;
-use rayon::prelude::ParallelIterator;
 use sprs::TriMat;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
@@ -15,6 +13,8 @@ use zarrs::array::FillValue;
 use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::ReadableStorageTraits;
 
+use super::layout::ArcVec;
+use super::layout::AtomicCounter;
 use super::layout::Layout;
 use super::layout::LayoutOps;
 use super::ChunkingStrategy;
@@ -28,7 +28,7 @@ use crate::utils::subjects_per_chunk;
 pub struct MatrixLayout;
 
 impl MatrixLayout {
-    fn append_slice(ans: &mut Vec<u8>, triples: &[(String, String)], dictionary: &Dictionary) {
+    fn append_slice(ans: ArcVec<u8>, triples: &[(String, String)], dictionary: &Dictionary) {
         let slice: Vec<AtomicU8> = vec![0u8; dictionary.objects_size()]
             .iter()
             .map(|&n| AtomicU8::new(n))
@@ -41,7 +41,7 @@ impl MatrixLayout {
             slice[oidx].store(pidx as u8, Ordering::Relaxed);
         });
 
-        ans.append(
+        ans.lock().unwrap().append(
             &mut slice
                 .iter()
                 .map(|elem| elem.load(Ordering::Relaxed))
@@ -104,29 +104,29 @@ where
         arr: &Array<FilesystemStore>,
         dictionary: &Dictionary,
         graph: Graph,
-        ans: &mut Vec<u8>,
-        mut count: u64,
+        ans: ArcVec<u8>,
+        count: AtomicCounter,
         chunk_x: u64,
         _chunk_y: u64,
     ) -> StorageResult<u64> {
-        dictionary
-            .subjects()
-            .iter()
-            .for_each(|(_, subject): (usize, Vec<u8>)| {
-                let subject = &std::str::from_utf8(&subject).unwrap().to_string();
-                let triples = graph.get(subject).unwrap();
+        dictionary.subjects().iter().for_each(|(_, subject)| {
+            let subject = &std::str::from_utf8(&subject).unwrap().to_string();
+            let triples = graph.get(subject).unwrap();
 
-                MatrixLayout::append_slice(ans, triples, dictionary);
+            MatrixLayout::append_slice(ans.to_owned(), triples, dictionary);
 
-                if (count + 1) % chunk_x == 0 {
-                    arr.store_chunk_elements(&[count, 0], ans.as_slice())
-                        .unwrap();
-                    ans.clear();
-                    count += 1
-                }
-            });
+            if (count.load(Ordering::Relaxed) + 1) % chunk_x == 0 {
+                arr.store_chunk_elements(
+                    &[count.load(Ordering::Relaxed) as u64, 0],
+                    ans.lock().unwrap().as_slice(),
+                )
+                .unwrap();
+                ans.lock().unwrap().clear();
+                count.fetch_add(1, Ordering::Relaxed);
+            }
+        });
 
-        Ok(count)
+        Ok(count.load(Ordering::Relaxed))
     }
 
     fn parse(&mut self, arr: Array<R>, dictionary: &Dictionary) -> StorageResult<ZarrArray> {
@@ -134,30 +134,28 @@ where
             dictionary.subjects_size(),
             dictionary.objects_size(),
         )));
-        (0..arr.chunk_grid_shape().unwrap()[0])
-            .par_bridge()
-            .for_each(|i| {
-                // Using this chunking strategy allows us to keep RAM usage low,
-                // as we load elements by row
-                arr.retrieve_chunk_elements::<u8>(&[i, 0])
-                    .unwrap()
-                    .chunks(dictionary.objects_size())
-                    .enumerate()
-                    .for_each(|(subject_idx, chunk)| {
-                        chunk
-                            .iter()
-                            .enumerate()
-                            .for_each(|(object_idx, &predicate_idx)| {
-                                if predicate_idx != 0 {
-                                    matrix.lock().unwrap().add_triplet(
-                                        subject_idx + (i * subjects_per_chunk(&arr)) as usize,
-                                        object_idx,
-                                        predicate_idx,
-                                    );
-                                }
-                            })
-                    })
-            });
+        (0..arr.chunk_grid_shape().unwrap()[0]).for_each(|i| {
+            // Using this chunking strategy allows us to keep RAM usage low,
+            // as we load elements by row
+            arr.retrieve_chunk_elements::<u8>(&[i, 0])
+                .unwrap()
+                .chunks(dictionary.objects_size())
+                .enumerate()
+                .for_each(|(subject_idx, chunk)| {
+                    chunk
+                        .iter()
+                        .enumerate()
+                        .for_each(|(object_idx, &predicate_idx)| {
+                            if predicate_idx != 0 {
+                                matrix.lock().unwrap().add_triplet(
+                                    subject_idx + (i * subjects_per_chunk(&arr)) as usize,
+                                    object_idx,
+                                    predicate_idx,
+                                );
+                            }
+                        })
+                })
+        });
 
         // We use a CSC Matrix because typically, RDF knowledge graphs tend to
         // have more rows than columns

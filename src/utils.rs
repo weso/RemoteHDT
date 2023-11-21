@@ -1,17 +1,12 @@
 use std::collections::HashSet;
 
 use fcsd::Set;
-use rayon::{
-    iter::IntoParallelRefIterator,
-    prelude::{ParallelBridge, ParallelIterator},
-};
 use serde_json::Value;
 use zarrs::array::Array;
 
 pub fn term_to_value(terms: Set) -> Value {
     terms
         .iter()
-        .par_bridge()
         .map(|(_, term)| std::str::from_utf8(&term).unwrap().to_string())
         .collect::<Vec<_>>()
         .into()
@@ -30,7 +25,7 @@ pub fn value_to_term(value: &Value) -> Vec<String> {
 
 pub fn hash_to_set(terms: HashSet<String>) -> Vec<String> {
     let mut vec = terms
-        .par_iter()
+        .iter()
         .map(|term| term.to_string())
         .collect::<Vec<_>>();
     vec.sort();

@@ -1,6 +1,5 @@
-use rayon::iter::ParallelBridge;
-use rayon::prelude::ParallelIterator;
 use sprs::TriMat;
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use zarrs::array::codec::array_to_bytes::sharding::ShardingCodecBuilder;
 use zarrs::array::codec::ArrayToBytesCodecTraits;
@@ -16,6 +15,8 @@ use zarrs::storage::ReadableStorageTraits;
 use crate::dictionary::Dictionary;
 use crate::io::Graph;
 
+use super::layout::ArcVec;
+use super::layout::AtomicCounter;
 use super::layout::Layout;
 use super::layout::LayoutOps;
 use super::ChunkingStrategy;
@@ -26,15 +27,21 @@ pub struct TabularLayout;
 
 impl TabularLayout {
     fn insert_triple(
-        ans: &mut Vec<u64>,
-        subject: &String,
+        ans: ArcVec<u64>,
+        subject: &str,
         predicate: String,
         object: String,
         dictionary: &Dictionary,
     ) {
-        ans.push(dictionary.get_subject_idx_unchecked(subject) as u64);
-        ans.push(dictionary.get_predicate_idx_unchecked(&predicate) as u64);
-        ans.push(dictionary.get_object_idx_unchecked(&object) as u64);
+        ans.lock()
+            .unwrap()
+            .push(dictionary.get_subject_idx_unchecked(subject) as u64);
+        ans.lock()
+            .unwrap()
+            .push(dictionary.get_predicate_idx_unchecked(&predicate) as u64);
+        ans.lock()
+            .unwrap()
+            .push(dictionary.get_object_idx_unchecked(&object) as u64);
     }
 }
 
@@ -95,25 +102,34 @@ where
         arr: &Array<FilesystemStore>,
         dictionary: &Dictionary,
         graph: Graph,
-        ans: &mut Vec<u64>,
-        mut count: u64,
+        ans: ArcVec<u64>,
+        count: AtomicCounter,
         chunk_x: u64,
         chunk_y: u64,
     ) -> StorageResult<u64> {
-        for (subject, triples) in graph {
-            for (predicate, object) in triples {
-                TabularLayout::insert_triple(ans, &subject, predicate, object, dictionary);
+        graph
+            .iter()
+            .enumerate()
+            .for_each(|(i, (subject, triples))| {
+                for (predicate, object) in triples {
+                    TabularLayout::insert_triple(
+                        ans.to_owned(),
+                        subject,
+                        predicate.to_owned(),
+                        object.to_owned(),
+                        dictionary,
+                    );
 
-                if ans.len() == (chunk_x * chunk_y) as usize {
-                    arr.store_chunk_elements(&[count, 0], ans.as_slice())
-                        .unwrap(); // TODO: remove unwrap
-                    ans.clear();
-                    count += 1;
+                    if ans.lock().unwrap().len() == (chunk_x * chunk_y) as usize {
+                        arr.store_chunk_elements(&[i as u64, 0], ans.lock().unwrap().as_slice())
+                            .unwrap(); // TODO: remove unwrap
+                        ans.lock().unwrap().clear();
+                        count.fetch_add(1, Ordering::Relaxed);
+                    }
                 }
-            }
-        }
+            });
 
-        Ok(count)
+        Ok(count.load(Ordering::Relaxed))
     }
 
     fn parse(&mut self, arr: Array<R>, dictionary: &Dictionary) -> StorageResult<ZarrArray> {
@@ -121,21 +137,19 @@ where
             dictionary.subjects_size(),
             dictionary.objects_size(),
         )));
-        (0..arr.chunk_grid_shape().unwrap()[0] as usize)
-            .par_bridge()
-            .for_each(|i| {
-                // Using this chunking strategy allows us to keep RAM usage low,
-                // as we load elements by row
-                arr.retrieve_chunk_elements::<usize>(&[i as u64, 0])
-                    .unwrap()
-                    .chunks(3)
-                    .for_each(|triple| {
-                        matrix
-                            .lock()
-                            .unwrap()
-                            .add_triplet(triple[0], triple[2], triple[1] as u8);
-                    })
-            });
+        (0..arr.chunk_grid_shape().unwrap()[0] as usize).for_each(|i| {
+            // Using this chunking strategy allows us to keep RAM usage low,
+            // as we load elements by row
+            arr.retrieve_chunk_elements::<usize>(&[i as u64, 0])
+                .unwrap()
+                .chunks(3)
+                .for_each(|triple| {
+                    matrix
+                        .lock()
+                        .unwrap()
+                        .add_triplet(triple[0], triple[2], triple[1] as u8);
+                })
+        });
 
         // We use a CSC Matrix because typically, RDF knowledge graphs tend to
         // have more rows than columns

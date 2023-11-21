@@ -18,7 +18,7 @@ fn main() {
         .serialize(
             format!("{}.zarr", zarr_path).as_str(),
             format!("../lubm-uba-improved/out/{}.ttl", zarr_path).as_str(),
-            ChunkingStrategy::Chunk,
+            ChunkingStrategy::Sharding(1024),
         )
         .unwrap();
 
