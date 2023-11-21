@@ -7,7 +7,7 @@ use sprs::CsVec;
 mod common;
 
 #[test]
-fn get_subject_matrix_chunk_test() {
+fn get_object_matrix_chunk_test() {
     common::setup(common::GET_OBJECT_MATRIX_ZARR);
 
     let mut zarr = LocalStorage::new(MatrixLayout);
@@ -29,7 +29,7 @@ fn get_subject_matrix_chunk_test() {
 }
 
 #[test]
-fn get_subject_matrix_sharding_test() {
+fn get_object_matrix_sharding_test() {
     common::setup(common::GET_OBJECT_SHARDING_ZARR);
 
     let mut zarr = LocalStorage::new(MatrixLayout);
@@ -50,7 +50,7 @@ fn get_subject_matrix_sharding_test() {
 }
 
 #[test]
-fn get_subject_tabular_test() {
+fn get_object_tabular_test() {
     common::setup(common::GET_OBJECT_TABULAR_ZARR);
 
     let mut zarr = LocalStorage::new(TabularLayout);
