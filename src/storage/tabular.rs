@@ -107,27 +107,27 @@ where
         chunk_x: u64,
         chunk_y: u64,
     ) -> StorageResult<u64> {
-        graph
-            .iter()
-            .enumerate()
-            .for_each(|(i, (subject, triples))| {
-                for (predicate, object) in triples {
-                    TabularLayout::insert_triple(
-                        ans.to_owned(),
-                        subject,
-                        predicate.to_owned(),
-                        object.to_owned(),
-                        dictionary,
-                    );
+        graph.iter().for_each(|(subject, triples)| {
+            for (predicate, object) in triples {
+                TabularLayout::insert_triple(
+                    ans.to_owned(),
+                    subject,
+                    predicate.to_owned(),
+                    object.to_owned(),
+                    dictionary,
+                );
 
-                    if ans.lock().unwrap().len() == (chunk_x * chunk_y) as usize {
-                        arr.store_chunk_elements(&[i as u64, 0], ans.lock().unwrap().as_slice())
-                            .unwrap(); // TODO: remove unwrap
-                        ans.lock().unwrap().clear();
-                        count.fetch_add(1, Ordering::Relaxed);
-                    }
+                if ans.lock().unwrap().len() == (chunk_x * chunk_y) as usize {
+                    arr.store_chunk_elements(
+                        &[count.load(Ordering::Relaxed), 0],
+                        ans.lock().unwrap().as_slice(),
+                    )
+                    .unwrap(); // TODO: remove unwrap
+                    ans.lock().unwrap().clear();
+                    count.fetch_add(1, Ordering::Relaxed);
                 }
-            });
+            }
+        });
 
         Ok(count.load(Ordering::Relaxed))
     }

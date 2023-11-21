@@ -117,7 +117,7 @@ where
 
             if (count.load(Ordering::Relaxed) + 1) % chunk_x == 0 {
                 arr.store_chunk_elements(
-                    &[count.load(Ordering::Relaxed) as u64, 0],
+                    &[count.load(Ordering::Relaxed), 0],
                     ans.lock().unwrap().as_slice(),
                 )
                 .unwrap();
