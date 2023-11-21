@@ -13,6 +13,12 @@ pub const LARGER_ZARR: &str = "larger.zarr";
 pub const GET_SUBJECT_MATRIX_ZARR: &str = "get_subject_matrix.zarr";
 pub const GET_SUBJECT_SHARDING_ZARR: &str = "get_subject_sharding.zarr";
 pub const GET_SUBJECT_TABULAR_ZARR: &str = "get_subject_tabular.zarr";
+pub const GET_PREDICATE_MATRIX_ZARR: &str = "get_predicate_matrix.zarr";
+pub const GET_PREDICATE_SHARDING_ZARR: &str = "get_predicate_sharding.zarr";
+pub const GET_PREDICATE_TABULAR_ZARR: &str = "get_predicate_tabular.zarr";
+pub const GET_OBJECT_MATRIX_ZARR: &str = "get_object_matrix.zarr";
+pub const GET_OBJECT_SHARDING_ZARR: &str = "get_object_sharding.zarr";
+pub const GET_OBJECT_TABULAR_ZARR: &str = "get_object_tabular.zarr";
 
 pub fn setup(path: &str) {
     if let Ok(_) = File::open(path) {
@@ -56,7 +62,7 @@ pub enum Predicate {
 }
 
 impl Predicate {
-    fn get_idx(self, dictionary: &Dictionary) -> u8 {
+    pub fn get_idx(self, dictionary: &Dictionary) -> u8 {
         dictionary.get_predicate_idx_unchecked(self.into()) as u8
     }
 }
@@ -89,7 +95,7 @@ pub enum Object {
 }
 
 impl Object {
-    fn get_idx(self, dictionary: &Dictionary) -> usize {
+    pub fn get_idx(self, dictionary: &Dictionary) -> usize {
         dictionary.get_object_idx_unchecked(self.into())
     }
 }

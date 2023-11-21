@@ -1,3 +1,4 @@
+use zarrs::array_subset::ArraySubset;
 use zarrs::{array::Array, storage::ReadableStorageTraits};
 
 use crate::error::EngineError::OperationError;
@@ -19,13 +20,15 @@ impl<T: ReadableStorageTraits> EngineStrategy<Vec<u8>> for Array<T> {
         }
     }
 
-    // TODO: the current implementation works for SELECT *, but what if we SELECT predicate?
     fn get_predicate(&self, index: usize) -> EngineResult<Vec<u8>> {
         unimplemented!()
     }
 
     fn get_object(&self, index: usize) -> EngineResult<Vec<u8>> {
-        let ans = self.retrieve_chunk(&[0, index as u64])?;
+        let start = vec![0, index as u64];
+        let end = vec![self.shape()[0], index as u64];
+        let shape = &ArraySubset::new_with_start_end_inc(start, end)?;
+        let ans = self.retrieve_array_subset_elements(shape)?;
         Ok(ans)
     }
 }

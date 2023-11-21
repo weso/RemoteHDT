@@ -15,6 +15,7 @@ impl EngineStrategy<CsVec<u8>> for ZarrArray {
     }
 
     fn get_object(&self, index: usize) -> EngineResult<CsVec<u8>> {
-        unimplemented!()
+        let selection = CsVec::new(self.cols(), vec![index], vec![1]);
+        Ok(self * &selection)
     }
 }
