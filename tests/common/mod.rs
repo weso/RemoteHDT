@@ -1,28 +1,31 @@
 #![allow(dead_code)]
 
+use safe_transmute::TriviallyTransmutable;
 use sprs::{CsMat, TriMat};
-use std::fs::{remove_dir_all, File};
+use std::fs::File;
+use zarrs::storage::store::FilesystemStore;
 
-use remote_hdt::dictionary::Dictionary;
+use remote_hdt::{
+    dictionary::Dictionary,
+    storage::{ChunkingStrategy, Storage},
+};
 
 pub const TABULAR_ZARR: &str = "tabular.zarr";
 pub const MATRIX_ZARR: &str = "matrix.zarr";
-pub const SHARDING_TABULAR_ZARR: &str = "sharding_tabular.zarr";
-pub const SHARDING_MATRIX_ZARR: &str = "sharding_matrix.zarr";
+pub const SHARDING_ZARR: &str = "sharding.zarr";
 pub const LARGER_ZARR: &str = "larger.zarr";
-pub const GET_SUBJECT_MATRIX_ZARR: &str = "get_subject_matrix.zarr";
-pub const GET_SUBJECT_SHARDING_ZARR: &str = "get_subject_sharding.zarr";
-pub const GET_SUBJECT_TABULAR_ZARR: &str = "get_subject_tabular.zarr";
-pub const GET_PREDICATE_MATRIX_ZARR: &str = "get_predicate_matrix.zarr";
-pub const GET_PREDICATE_SHARDING_ZARR: &str = "get_predicate_sharding.zarr";
-pub const GET_PREDICATE_TABULAR_ZARR: &str = "get_predicate_tabular.zarr";
-pub const GET_OBJECT_MATRIX_ZARR: &str = "get_object_matrix.zarr";
-pub const GET_OBJECT_SHARDING_ZARR: &str = "get_object_sharding.zarr";
-pub const GET_OBJECT_TABULAR_ZARR: &str = "get_object_tabular.zarr";
 
-pub fn setup(path: &str) {
-    if let Ok(_) = File::open(path) {
-        remove_dir_all(path).unwrap();
+pub fn setup<T: TriviallyTransmutable>(
+    path: &str,
+    storage: &mut Storage<FilesystemStore, T>,
+    chunking_strategy: ChunkingStrategy,
+) {
+    if File::open(path).is_err() {
+        storage
+            .serialize(path, "resources/rdf.nt", chunking_strategy)
+            .unwrap();
+    } else {
+        storage.load(path).unwrap();
     }
 }
 

@@ -8,65 +8,46 @@ mod common;
 
 #[test]
 fn get_object_matrix_chunk_test() {
-    common::setup(common::GET_OBJECT_MATRIX_ZARR);
+    let mut storage = LocalStorage::new(MatrixLayout);
+    common::setup(common::MATRIX_ZARR, &mut storage, ChunkingStrategy::Chunk);
 
-    let mut zarr = LocalStorage::new(MatrixLayout);
-    let _ = zarr.serialize(
-        common::GET_OBJECT_MATRIX_ZARR,
-        "resources/rdf.nt",
-        ChunkingStrategy::Chunk,
-    );
-    let dictionary = zarr.get_dictionary();
-    let actual = zarr
-        .load(common::GET_OBJECT_MATRIX_ZARR)
+    let actual = storage
+        .load(common::MATRIX_ZARR)
         .unwrap()
-        .get_object(common::Object::Alan.get_idx(&dictionary))
+        .get_object(common::Object::Alan.get_idx(&storage.get_dictionary()))
         .unwrap();
-
-    common::setup(common::GET_OBJECT_MATRIX_ZARR);
 
     assert_eq!(actual, vec![0, 3, 0, 0, 0])
 }
 
 #[test]
 fn get_object_matrix_sharding_test() {
-    common::setup(common::GET_OBJECT_SHARDING_ZARR);
-
-    let mut zarr = LocalStorage::new(MatrixLayout);
-    let _ = zarr.serialize(
-        common::GET_OBJECT_SHARDING_ZARR,
-        "resources/rdf.nt",
+    let mut storage = LocalStorage::new(MatrixLayout);
+    common::setup(
+        common::SHARDING_ZARR,
+        &mut storage,
         ChunkingStrategy::Sharding(3),
     );
-    let actual = zarr
-        .load(common::GET_OBJECT_SHARDING_ZARR)
+
+    let actual = storage
+        .load(common::MATRIX_ZARR)
         .unwrap()
         .get_object(0)
         .unwrap();
-
-    common::setup(common::GET_OBJECT_SHARDING_ZARR);
 
     assert_eq!(actual, vec![2, 0, 0, 0, 0])
 }
 
 #[test]
 fn get_object_tabular_test() {
-    common::setup(common::GET_OBJECT_TABULAR_ZARR);
+    let mut storage = LocalStorage::new(TabularLayout);
+    common::setup(common::TABULAR_ZARR, &mut storage, ChunkingStrategy::Chunk);
 
-    let mut zarr = LocalStorage::new(TabularLayout);
-    let _ = zarr.serialize(
-        common::GET_OBJECT_TABULAR_ZARR,
-        "resources/rdf.nt",
-        ChunkingStrategy::Chunk,
-    );
-    let dictionary = zarr.get_dictionary();
-    let actual = zarr
-        .load_sparse(common::GET_OBJECT_TABULAR_ZARR)
+    let actual = storage
+        .load_sparse(common::TABULAR_ZARR)
         .unwrap()
-        .get_object(common::Object::Alan.get_idx(&dictionary))
+        .get_object(common::Object::Alan.get_idx(&storage.get_dictionary()))
         .unwrap();
-
-    common::setup(common::GET_OBJECT_TABULAR_ZARR);
 
     assert_eq!(actual, CsVec::new(4, vec![1], vec![3]))
 }

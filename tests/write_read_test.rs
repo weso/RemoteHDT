@@ -5,91 +5,53 @@ use remote_hdt::storage::{
 mod common;
 
 #[test]
-fn write_read_test_tabular() {
-    common::setup(common::TABULAR_ZARR);
-
-    let mut zarr = LocalStorage::new(TabularLayout);
-    let _ = zarr.serialize(
-        common::TABULAR_ZARR,
-        "resources/rdf.nt",
-        ChunkingStrategy::Chunk,
-    );
-    let dictionary = zarr.get_dictionary();
-    let actual = zarr.load_sparse(common::TABULAR_ZARR).unwrap();
-
-    common::setup(common::TABULAR_ZARR);
-
-    assert_eq!(actual, common::Graph::new(&dictionary))
+fn write_read_tabular_test() {
+    let mut storage = LocalStorage::new(TabularLayout);
+    common::setup(common::MATRIX_ZARR, &mut storage, ChunkingStrategy::Chunk);
+    assert_eq!(
+        storage.load_sparse(common::TABULAR_ZARR).unwrap(),
+        common::Graph::new(&storage.get_dictionary())
+    )
 }
 
 #[test]
-fn write_read_test_matrix() {
-    common::setup(common::MATRIX_ZARR);
-
-    let mut zarr = LocalStorage::new(MatrixLayout);
-    let _ = zarr.serialize(
-        common::MATRIX_ZARR,
-        "resources/rdf.nt",
-        ChunkingStrategy::Chunk,
-    );
-    let dictionary = zarr.get_dictionary();
-    let actual = zarr.load_sparse(common::MATRIX_ZARR).unwrap();
-
-    common::setup(common::MATRIX_ZARR);
-
-    assert_eq!(actual, common::Graph::new(&dictionary))
-}
-
-#[test]
-fn write_read_matrix_tabular_test() {
-    common::setup(common::SHARDING_TABULAR_ZARR);
-
-    let mut zarr = LocalStorage::new(TabularLayout);
-    let _ = zarr.serialize(
-        common::SHARDING_TABULAR_ZARR,
-        "resources/rdf.nt",
-        ChunkingStrategy::Sharding(3),
-    );
-    let dictionary = zarr.get_dictionary();
-    let actual = zarr.load_sparse(common::SHARDING_TABULAR_ZARR).unwrap();
-
-    common::setup(common::SHARDING_TABULAR_ZARR);
-
-    assert_eq!(actual, common::Graph::new(&dictionary))
+fn write_read_matrix_test() {
+    let mut storage = LocalStorage::new(MatrixLayout);
+    common::setup(common::MATRIX_ZARR, &mut storage, ChunkingStrategy::Chunk);
+    assert_eq!(
+        storage.load_sparse(common::MATRIX_ZARR).unwrap(),
+        common::Graph::new(&storage.get_dictionary())
+    )
 }
 
 #[test]
 fn write_read_matrix_sharding_test() {
-    common::setup(common::SHARDING_MATRIX_ZARR);
+    let mut storage = LocalStorage::new(MatrixLayout);
 
-    let mut zarr = LocalStorage::new(MatrixLayout);
-    let _ = zarr.serialize(
-        common::SHARDING_MATRIX_ZARR,
-        "resources/rdf.nt",
+    common::setup(
+        common::SHARDING_ZARR,
+        &mut storage,
         ChunkingStrategy::Sharding(3),
     );
-    let dictionary = zarr.get_dictionary();
-    let actual = zarr.load_sparse(common::SHARDING_MATRIX_ZARR).unwrap();
 
-    common::setup(common::SHARDING_MATRIX_ZARR);
-
-    assert_eq!(actual, common::Graph::new(&dictionary))
+    assert_eq!(
+        storage.load_sparse(common::SHARDING_ZARR).unwrap(),
+        common::Graph::new(&storage.get_dictionary())
+    )
 }
 
 #[test]
 fn write_read_larger_than_triples_shard_test() {
-    common::setup(common::LARGER_ZARR);
+    let mut storage = LocalStorage::new(MatrixLayout);
 
-    let mut zarr = LocalStorage::new(TabularLayout);
-    let _ = zarr.serialize(
+    common::setup(
         common::LARGER_ZARR,
-        "resources/rdf.nt",
-        ChunkingStrategy::Sharding(1000),
+        &mut storage,
+        ChunkingStrategy::Sharding(10000),
     );
-    let dictionary = zarr.get_dictionary();
-    let actual = zarr.load_sparse(common::LARGER_ZARR).unwrap();
 
-    common::setup(common::LARGER_ZARR);
-
-    assert_eq!(actual, common::Graph::new(&dictionary))
+    assert_eq!(
+        storage.load_sparse(common::LARGER_ZARR).unwrap(),
+        common::Graph::new(&storage.get_dictionary())
+    )
 }
