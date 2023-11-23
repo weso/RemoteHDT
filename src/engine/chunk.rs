@@ -1,10 +1,13 @@
+use zarrs::array::Array;
 use zarrs::array_subset::ArraySubset;
-use zarrs::{array::Array, storage::ReadableStorageTraits};
+use zarrs::storage::ReadableStorageTraits;
 
-use crate::error::EngineError::OperationError;
-use crate::utils::{objects_per_chunk, subjects_per_chunk};
+use crate::error::EngineError;
+use crate::utils::objects_per_chunk;
+use crate::utils::subjects_per_chunk;
 
-use super::{EngineResult, EngineStrategy};
+use super::EngineResult;
+use super::EngineStrategy;
 
 impl<T: ReadableStorageTraits> EngineStrategy<Vec<u8>> for Array<T> {
     fn get_subject(&self, index: usize) -> EngineResult<Vec<u8>> {
@@ -16,7 +19,7 @@ impl<T: ReadableStorageTraits> EngineStrategy<Vec<u8>> for Array<T> {
             .nth(chunk_to_index)
         {
             Some(ans) => Ok(ans.to_owned()),
-            None => Err(OperationError),
+            None => Err(EngineError::Operation),
         }
     }
 

@@ -10,14 +10,14 @@ use remote_hdt::{
     storage::{ChunkingStrategy, Storage},
 };
 
-pub const TABULAR_ZARR: &str = "tabular.zarr";
-pub const MATRIX_ZARR: &str = "matrix.zarr";
-pub const SHARDING_ZARR: &str = "sharding.zarr";
-pub const LARGER_ZARR: &str = "larger.zarr";
+pub const TABULAR_ZARR: &str = "tests/out/tabular.zarr";
+pub const MATRIX_ZARR: &str = "tests/out/matrix.zarr";
+pub const SHARDING_ZARR: &str = "tests/out/sharding.zarr";
+pub const LARGER_ZARR: &str = "tests/out/larger.zarr";
 
-pub fn setup<T: TriviallyTransmutable>(
+pub fn setup<T: TriviallyTransmutable, C>(
     path: &str,
-    storage: &mut Storage<FilesystemStore, T>,
+    storage: &mut Storage<FilesystemStore, T, C>,
     chunking_strategy: ChunkingStrategy,
 ) {
     if File::open(path).is_err() {

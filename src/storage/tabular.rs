@@ -1,5 +1,4 @@
 use sprs::TriMat;
-use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use zarrs::array::codec::array_to_bytes::sharding::ShardingCodecBuilder;
 use zarrs::array::codec::ArrayToBytesCodecTraits;
@@ -9,43 +8,23 @@ use zarrs::array::ChunkGrid;
 use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
-use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::ReadableStorageTraits;
 
 use crate::dictionary::Dictionary;
 use crate::io::Graph;
 
-use super::layout::ArcVec;
-use super::layout::AtomicCounter;
 use super::layout::Layout;
 use super::layout::LayoutOps;
 use super::ChunkingStrategy;
 use super::StorageResult;
 use super::ZarrArray;
 
+type ZarrType = u64;
+type Chunk = (u32, u32, u32);
+
 pub struct TabularLayout;
 
-impl TabularLayout {
-    fn insert_triple(
-        ans: ArcVec<u64>,
-        subject: &str,
-        predicate: String,
-        object: String,
-        dictionary: &Dictionary,
-    ) {
-        ans.lock()
-            .unwrap()
-            .push(dictionary.get_subject_idx_unchecked(subject) as u64);
-        ans.lock()
-            .unwrap()
-            .push(dictionary.get_predicate_idx_unchecked(&predicate) as u64);
-        ans.lock()
-            .unwrap()
-            .push(dictionary.get_object_idx_unchecked(&object) as u64);
-    }
-}
-
-impl<R> Layout<R, u64> for TabularLayout
+impl<R> Layout<R, ZarrType, Chunk> for TabularLayout
 where
     R: ReadableStorageTraits + Sized,
 {
@@ -53,7 +32,7 @@ where
         vec![
             graph
                 .iter()
-                .map(|(_, triples)| triples.len() as u64)
+                .map(|triples| triples.len() as u64)
                 .reduce(|acc, a| acc + a)
                 .unwrap(),
             3,
@@ -93,43 +72,32 @@ where
     }
 }
 
-impl<R> LayoutOps<R, u64> for TabularLayout
+impl<R> LayoutOps<R, ZarrType, (u32, u32, u32)> for TabularLayout
 where
     R: ReadableStorageTraits + Sized,
 {
-    fn serialize_graph(
-        &mut self,
-        arr: &Array<FilesystemStore>,
-        dictionary: &Dictionary,
-        graph: Graph,
-        ans: ArcVec<u64>,
-        count: AtomicCounter,
-        chunk_x: u64,
-        chunk_y: u64,
-    ) -> StorageResult<u64> {
-        graph.iter().for_each(|(subject, triples)| {
-            for (predicate, object) in triples {
-                TabularLayout::insert_triple(
-                    ans.to_owned(),
-                    subject,
-                    predicate.to_owned(),
-                    object.to_owned(),
-                    dictionary,
-                );
+    fn graph_iter(&self, graph: Graph) -> Vec<Chunk> {
+        graph
+            .iter()
+            .enumerate()
+            .map(|(subject, triples)| {
+                triples
+                    .iter()
+                    .map(|&(predicate, object)| (subject as u32, predicate, object))
+                    .collect::<Vec<Chunk>>()
+            })
+            .flatten()
+            .collect::<Vec<Chunk>>()
+    }
 
-                if ans.lock().unwrap().len() == (chunk_x * chunk_y) as usize {
-                    arr.store_chunk_elements(
-                        &[count.load(Ordering::Relaxed), 0],
-                        ans.lock().unwrap().as_slice(),
-                    )
-                    .unwrap(); // TODO: remove unwrap
-                    ans.lock().unwrap().clear();
-                    count.fetch_add(1, Ordering::Relaxed);
-                }
-            }
-        });
-
-        Ok(count.load(Ordering::Relaxed))
+    fn chunk_elements(&self, chunk: &[Chunk], _: usize) -> Vec<ZarrType> {
+        let mut ans = Vec::new();
+        for &(subject, predicate, object) in chunk {
+            ans.push(subject as ZarrType);
+            ans.push(predicate as ZarrType);
+            ans.push(object as ZarrType);
+        }
+        ans
     }
 
     fn parse(&mut self, arr: Array<R>, dictionary: &Dictionary) -> StorageResult<ZarrArray> {
@@ -140,7 +108,7 @@ where
         (0..arr.chunk_grid_shape().unwrap()[0] as usize).for_each(|i| {
             // Using this chunking strategy allows us to keep RAM usage low,
             // as we load elements by row
-            arr.retrieve_chunk_elements::<usize>(&[i as u64, 0])
+            arr.retrieve_chunk_elements::<usize>(&[i as ZarrType, 0])
                 .unwrap()
                 .chunks(3)
                 .for_each(|triple| {
@@ -155,5 +123,9 @@ where
         // have more rows than columns
         let x = matrix.lock().unwrap();
         Ok(x.to_csc())
+    }
+
+    fn sharding_factor(&self, subjects: usize, objects: usize) -> usize {
+        subjects * objects
     }
 }

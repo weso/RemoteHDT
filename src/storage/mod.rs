@@ -13,7 +13,7 @@ use zarrs::storage::store::HTTPStore;
 use crate::dictionary::Dictionary;
 use crate::error::RemoteHDTError;
 use crate::io::RdfParser;
-use crate::utils::term_to_value;
+use crate::utils::rdf_to_value;
 
 use self::layout::Layout;
 
@@ -23,14 +23,20 @@ pub mod tabular;
 
 pub type ZarrArray = CsMat<u8>;
 pub type StorageResult<T> = Result<T, RemoteHDTError>;
-pub type LocalStorage<T> = Storage<FilesystemStore, T>;
-pub type HTTPStorage<T> = Storage<HTTPStore, T>;
+pub type LocalStorage<T, C> = Storage<FilesystemStore, T, C>;
+pub type HTTPStorage<T, C> = Storage<HTTPStore, T, C>;
 
 const ARRAY_NAME: &str = "/group/RemoteHDT";
 
 pub enum ChunkingStrategy {
     Chunk,
     Sharding(u64),
+    Best,
+}
+
+pub enum ThreadingStrategy {
+    Single,
+    Multi,
 }
 
 impl From<ChunkingStrategy> for u64 {
@@ -38,17 +44,18 @@ impl From<ChunkingStrategy> for u64 {
         match value {
             ChunkingStrategy::Chunk => 1,
             ChunkingStrategy::Sharding(size) => size,
+            ChunkingStrategy::Best => 16, // TODO: set to the number of threads
         }
     }
 }
 
-pub struct Storage<R, T> {
+pub struct Storage<R, T, C> {
     dictionary: Dictionary,
-    layout: Box<dyn Layout<R, T>>,
+    layout: Box<dyn Layout<R, T, C>>,
 }
 
-impl<R, T: TriviallyTransmutable> Storage<R, T> {
-    pub fn new(layout: impl Layout<R, T> + 'static) -> Self {
+impl<R, T: TriviallyTransmutable, C> Storage<R, T, C> {
+    pub fn new(layout: impl Layout<R, T, C> + 'static) -> Self {
         Storage {
             dictionary: Default::default(),
             layout: Box::new(layout),
@@ -60,7 +67,7 @@ impl<R, T: TriviallyTransmutable> Storage<R, T> {
     }
 }
 
-impl<T: TriviallyTransmutable> LocalStorage<T> {
+impl<T: TriviallyTransmutable, C> LocalStorage<T, C> {
     /// # Errors
     /// Returns [`PathExistsError`] if the provided path already exists; that is,
     /// the user is trying to store the RDF dataset in an occupied storage. This
@@ -70,6 +77,7 @@ impl<T: TriviallyTransmutable> LocalStorage<T> {
         zarr_path: &'a str,
         rdf_path: &'a str,
         chunking_strategy: ChunkingStrategy,
+        // threading_strategy: ThreadingStrategy,
     ) -> StorageResult<&Self> {
         // 1. The first thing that should be done is to check whether the path
         // in which we are trying to store the dump already exists or not. If it
@@ -78,7 +86,7 @@ impl<T: TriviallyTransmutable> LocalStorage<T> {
         let path = PathBuf::from_str(zarr_path)?;
         if path.exists() {
             // the actual check occurs here !!!
-            return Err(RemoteHDTError::PathExistsError);
+            return Err(RemoteHDTError::PathExists);
         }
 
         // 2. We can create the FileSystemStore appropiately
@@ -88,13 +96,26 @@ impl<T: TriviallyTransmutable> LocalStorage<T> {
         let group = GroupBuilder::new().build(store.clone(), "/group")?;
         group.store_metadata()?;
 
+        // rayon::ThreadPoolBuilder::new()
+        //     .num_threads(1)
+        //     .build_global()
+        //     .unwrap();
+
         // 3. Import the RDF dump using `rdf-rs`
-        let (graph, dictionary) = RdfParser::new(rdf_path).unwrap().parse().unwrap(); // TODO: remove unwraps
-        self.dictionary = dictionary;
+        let graph = match RdfParser::parse(rdf_path) {
+            Ok((graph, dictionary)) => {
+                self.dictionary = dictionary;
+                graph
+            }
+            Err(_) => todo!(),
+        };
 
         // 4. Build the structure of the Array; as such, several parameters of it are
         // tweaked. Namely, the size of the array, the size of the chunks, the name
         // of the different dimensions and the default values
+        let subjects = self.dictionary.subjects();
+        let predicates = self.dictionary.predicates();
+        let objects = self.dictionary.objects();
         let arr = ArrayBuilder::new(
             self.layout.shape(&self.dictionary, &graph),
             self.layout.data_type(),
@@ -105,19 +126,16 @@ impl<T: TriviallyTransmutable> LocalStorage<T> {
         .array_to_bytes_codec(self.layout.array_to_bytes_codec(&self.dictionary)?)
         .attributes({
             let mut attributes = Map::new();
-            attributes.insert("subjects".into(), term_to_value(self.dictionary.subjects()));
-            attributes.insert(
-                "predicates".into(),
-                term_to_value(self.dictionary.predicates()),
-            );
-            attributes.insert("objects".into(), term_to_value(self.dictionary.objects()));
+            attributes.insert("subjects".into(), rdf_to_value(subjects));
+            attributes.insert("predicates".into(), rdf_to_value(predicates));
+            attributes.insert("objects".into(), rdf_to_value(objects));
             attributes
         }) // TODO: one attribute should be the Layout
         .build(store, ARRAY_NAME)?;
 
         arr.store_metadata()?;
 
-        self.layout.serialize(arr, &self.dictionary, graph)?;
+        self.layout.serialize(arr, graph)?;
 
         Ok(self)
     }
@@ -136,7 +154,7 @@ impl<T: TriviallyTransmutable> LocalStorage<T> {
     }
 }
 
-impl<T: TriviallyTransmutable> HTTPStorage<T> {
+impl<T: TriviallyTransmutable, C> HTTPStorage<T, C> {
     pub fn connect(&mut self, url: &str) -> StorageResult<Array<HTTPStore>> {
         let store = Arc::new(HTTPStore::new(url)?);
         let arr = Array::new(store, ARRAY_NAME)?;

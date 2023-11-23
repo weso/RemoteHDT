@@ -30,7 +30,7 @@ fn get_object_matrix_sharding_test() {
     );
 
     let actual = storage
-        .load(common::MATRIX_ZARR)
+        .load(common::SHARDING_ZARR)
         .unwrap()
         .get_object(0)
         .unwrap();

@@ -1,6 +1,5 @@
 use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::atomic::Ordering;
 
 use safe_transmute::TriviallyTransmutable;
 use zarrs::array::codec::ArrayToBytesCodecTraits;
@@ -23,10 +22,8 @@ use super::StorageResult;
 use super::ZarrArray;
 
 type ArrayToBytesCodec = Box<dyn ArrayToBytesCodecTraits>;
-pub(crate) type AtomicCounter = Arc<AtomicU64>;
-pub(crate) type ArcVec<T> = Arc<Mutex<Vec<T>>>;
 
-pub trait LayoutOps<R, T: TriviallyTransmutable> {
+pub trait LayoutOps<R, T: TriviallyTransmutable, C> {
     fn retrieve_attributes(&mut self, arr: &Array<R>) -> Dictionary {
         // 4. We get the attributes so we can obtain some values that we will need
         let attributes = arr.attributes();
@@ -38,36 +35,30 @@ pub trait LayoutOps<R, T: TriviallyTransmutable> {
         Dictionary::from_vec_str(subjects, predicates, objects)
     }
 
-    fn serialize(
-        &mut self,
-        arr: Array<FilesystemStore>,
-        dictionary: &Dictionary,
-        graph: Graph,
-    ) -> StorageResult<()> {
-        let ans = Arc::new(Mutex::new(Vec::<T>::new()));
+    fn serialize(&mut self, arr: Array<FilesystemStore>, graph: Graph) -> StorageResult<()> {
+        let objects_size = arr.shape()[1] as usize;
+        let count = AtomicU64::new(0);
+        let binding = self.graph_iter(graph);
+        let iter = binding.chunks_exact(subjects_per_chunk(&arr) as usize);
+        let remainder = iter.remainder();
 
-        let count = self.serialize_graph(
-            &arr,
-            dictionary,
-            graph,
-            ans.to_owned(),
-            Arc::new(AtomicU64::new(0)),
-            subjects_per_chunk(&arr),
-            objects_per_chunk(&arr),
-        )?;
+        iter.for_each(|chunk| {
+            arr.store_chunk_elements(
+                &[count.load(Ordering::Relaxed), 0],
+                self.chunk_elements(chunk, objects_size).as_slice(),
+            )
+            .unwrap();
+            count.fetch_add(1, Ordering::Relaxed);
+        });
 
-        let ans = ans.lock().unwrap();
-        if !ans.is_empty() {
+        if !remainder.is_empty() {
             arr.store_array_subset_elements(
                 &ArraySubset::new_with_start_shape(
-                    vec![count * subjects_per_chunk(&arr), 0],
-                    vec![
-                        ans.len() as u64 / objects_per_chunk(&arr),
-                        objects_per_chunk(&arr),
-                    ],
+                    vec![count.load(Ordering::Relaxed) * subjects_per_chunk(&arr), 0],
+                    vec![remainder.len() as u64, objects_per_chunk(&arr)],
                 )
                 .unwrap(), // TODO: remove unwrap
-                ans.as_slice(),
+                self.chunk_elements(remainder, objects_size).as_slice(),
             )
             .unwrap();
         }
@@ -75,21 +66,13 @@ pub trait LayoutOps<R, T: TriviallyTransmutable> {
         Ok(())
     }
 
-    fn serialize_graph(
-        &mut self,
-        arr: &Array<FilesystemStore>,
-        dictionary: &Dictionary,
-        graph: Graph,
-        ans: ArcVec<T>,
-        count: AtomicCounter,
-        chunk_x: u64,
-        chunk_y: u64,
-    ) -> StorageResult<u64>;
-
+    fn graph_iter(&self, graph: Graph) -> Vec<C>;
+    fn chunk_elements(&self, chunk: &[C], objects: usize) -> Vec<T>;
     fn parse(&mut self, arr: Array<R>, dictionary: &Dictionary) -> StorageResult<ZarrArray>;
+    fn sharding_factor(&self, subjects: usize, objects: usize) -> usize;
 }
 
-pub trait Layout<R, T: TriviallyTransmutable>: LayoutOps<R, T> {
+pub trait Layout<R, T: TriviallyTransmutable, C>: LayoutOps<R, T, C> {
     fn shape(&self, dictionary: &Dictionary, graph: &Graph) -> Vec<u64>;
     fn data_type(&self) -> DataType;
     fn chunk_shape(

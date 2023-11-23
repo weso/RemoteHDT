@@ -4,7 +4,7 @@ use fcsd::Set;
 use serde_json::Value;
 use zarrs::array::Array;
 
-pub fn term_to_value(terms: Set) -> Value {
+pub fn rdf_to_value(terms: Set) -> Value {
     terms
         .iter()
         .map(|(_, term)| std::str::from_utf8(&term).unwrap().to_string())

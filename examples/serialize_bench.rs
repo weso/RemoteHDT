@@ -4,6 +4,10 @@ use remote_hdt::storage::LocalStorage;
 use std::env;
 use std::time::Instant;
 
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static ALLOCATOR: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() <= 1 {
@@ -18,7 +22,7 @@ fn main() {
         .serialize(
             format!("{}.zarr", zarr_path).as_str(),
             format!("../lubm-uba-improved/out/{}.ttl", zarr_path).as_str(),
-            ChunkingStrategy::Sharding(1024),
+            ChunkingStrategy::Sharding(10240),
         )
         .unwrap();
 

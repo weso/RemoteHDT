@@ -28,7 +28,7 @@ pub enum RemoteHDTError {
     #[error(transparent)]
     HTTPCreate(#[from] HTTPStoreCreateError),
     #[error("The Path already exists, please provide an empty path")]
-    PathExistsError,
+    PathExists,
     #[error(transparent)]
     GZipCompression(#[from] GzipCompressionLevelError),
     #[error("The Graph you are trying to serialize is empty")]
@@ -42,5 +42,17 @@ pub enum EngineError {
     #[error(transparent)]
     Array(#[from] ArrayError),
     #[error("Operation error")]
-    OperationError,
+    Operation,
+}
+
+#[derive(Error, Debug)]
+pub enum ParserError {
+    #[error("Could not parse the Dicitonary: `{0}`")]
+    Dictionary(String),
+    #[error("Could not parse the Graph: `{0}`")]
+    Graph(String),
+    #[error("Format {0} not supported")]
+    NotSupportedFormat(String),
+    #[error("No format provided")]
+    NoFormatProvided,
 }

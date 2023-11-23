@@ -78,8 +78,8 @@ impl Dictionary {
     pub fn get_predicate_idx(&self, predicate: &str) -> Option<usize> {
         let mut locator = self.predicates.locator();
         match locator.run(predicate) {
-            Some(value) => Some(value + 1), // 0s are reserved for non-existant edges
-            None => todo!(),
+            Some(value) => Some(value + 1),
+            None => None,
         }
     }
 
