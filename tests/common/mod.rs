@@ -68,6 +68,7 @@ impl Predicate {
     pub fn get_idx(self, dictionary: &Dictionary) -> u8 {
         dictionary.get_predicate_idx_unchecked(self.into()) as u8
     }
+    
 }
 
 impl From<Predicate> for &str {
