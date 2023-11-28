@@ -32,6 +32,6 @@ impl<T: ReadableStorageTraits> EngineStrategy<Vec<u8>> for Array<T> {
         let end = vec![self.shape()[0], index as u64];
         let shape = &ArraySubset::new_with_start_end_inc(start, end)?;
         let ans = self.retrieve_array_subset_elements(shape)?;
-        Ok(ans)
+        Ok(ans.to_vec())
     }
 }

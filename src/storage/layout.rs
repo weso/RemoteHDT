@@ -45,7 +45,7 @@ pub trait LayoutOps<R, T: TriviallyTransmutable, C> {
         iter.for_each(|chunk| {
             arr.store_chunk_elements(
                 &[count.load(Ordering::Relaxed), 0],
-                self.chunk_elements(chunk, objects_size).as_slice(),
+                self.chunk_elements(chunk, objects_size),
             )
             .unwrap();
             count.fetch_add(1, Ordering::Relaxed);
@@ -58,7 +58,7 @@ pub trait LayoutOps<R, T: TriviallyTransmutable, C> {
                     vec![remainder.len() as u64, objects_per_chunk(&arr)],
                 )
                 .unwrap(), // TODO: remove unwrap
-                self.chunk_elements(remainder, objects_size).as_slice(),
+                self.chunk_elements(remainder, objects_size),
             )
             .unwrap();
         }
