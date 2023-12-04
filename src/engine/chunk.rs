@@ -23,7 +23,7 @@ impl<T: ReadableStorageTraits> EngineStrategy<Vec<u8>> for Array<T> {
         }
     }
 
-    fn get_predicate(&self, index: usize) -> EngineResult<Vec<u8>> {
+    fn get_predicate(&self, index: u8) -> EngineResult<Vec<u8>> {
         unimplemented!()
     }
 

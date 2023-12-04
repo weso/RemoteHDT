@@ -181,7 +181,9 @@ impl Graph {
             Object::GCHQ.get_idx(dictionary),
             Predicate::Manufacturer.get_idx(dictionary),
         );
-
         ans.to_csc()
+
+
+        
     }
 }

@@ -10,19 +10,20 @@ static ALLOCATOR: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() <= 1 {
-        panic!("Usage: cargo run --example serialize_bench <number_of_universities>");
+    if args.len() <= 3 {
+        panic!("Usage: cargo run --example serialize_bench <rdf_path> <zarr_path> <shard_size>");
     }
-    let number_of_universities: &String = &args[1];
-    let zarr_path = format!("{}-lubm", number_of_universities);
-
+    let rdf_path: &String = &args[1];
+    let zarr_path: &String = &args[2];
+    let shard_size: &String = &args[3];
+  
     let before = Instant::now();
 
     LocalStorage::new(MatrixLayout)
         .serialize(
-            format!("{}.zarr", zarr_path).as_str(),
-            format!("../lubm-uba-improved/out/{}.ttl", zarr_path).as_str(),
-            ChunkingStrategy::Sharding(10240),
+                    &zarr_path.as_str(),
+            &rdf_path.as_str(),
+            ChunkingStrategy::Sharding(shard_size.parse::<u64>().unwrap()),
         )
         .unwrap();
 
