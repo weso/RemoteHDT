@@ -2,7 +2,7 @@ use remote_hdt::{
     engine::EngineStrategy,
     storage::{matrix::MatrixLayout, tabular::TabularLayout, ChunkingStrategy, LocalStorage},
 };
-use sprs:: TriMat;
+use sprs::TriMat;
 mod common;
 
 #[test]
@@ -48,10 +48,8 @@ fn get_object_tabular_test() {
         .get_object(common::Object::Alan.get_idx(&storage.get_dictionary()))
         .unwrap();
 
-    let mut expected = TriMat::new((4,9));
-    expected.add_triplet(1,3,3);
+    let mut expected = TriMat::new((4, 9));
+    expected.add_triplet(1, 3, 3);
     let expected = expected.to_csc();
-    assert_eq!(actual, expected )
+    assert_eq!(actual, expected)
 }
-
-

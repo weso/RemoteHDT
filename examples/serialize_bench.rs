@@ -16,12 +16,12 @@ fn main() {
     let rdf_path: &String = &args[1];
     let zarr_path: &String = &args[2];
     let shard_size: &String = &args[3];
-  
+
     let before = Instant::now();
 
     LocalStorage::new(MatrixLayout)
         .serialize(
-                    &zarr_path.as_str(),
+            &zarr_path.as_str(),
             &rdf_path.as_str(),
             ChunkingStrategy::Sharding(shard_size.parse::<u64>().unwrap()),
         )

@@ -77,10 +77,7 @@ impl Dictionary {
 
     pub fn get_predicate_idx(&self, predicate: &str) -> Option<usize> {
         let mut locator = self.predicates.locator();
-        match locator.run(predicate) {
-            Some(value) => Some(value + 1),
-            None => None,
-        }
+        locator.run(predicate).map(|value| value + 1)
     }
 
     pub fn get_predicate_idx_unchecked(&self, predicate: &str) -> usize {
