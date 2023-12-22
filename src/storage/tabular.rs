@@ -80,13 +80,12 @@ where
         graph
             .iter()
             .enumerate()
-            .map(|(subject, triples)| {
+            .flat_map(|(subject, triples)| {
                 triples
                     .iter()
                     .map(|&(predicate, object)| (subject as u32, predicate, object))
                     .collect::<Vec<Chunk>>()
             })
-            .flatten()
             .collect::<Vec<Chunk>>()
     }
 
