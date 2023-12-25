@@ -1,7 +1,7 @@
+use parking_lot::Mutex;
 use sprs::TriMat;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
-use std::sync::Mutex;
 use zarrs::array::codec::array_to_bytes::sharding::ShardingCodecBuilder;
 use zarrs::array::codec::ArrayToBytesCodecTraits;
 use zarrs::array::codec::GzipCodec;
@@ -15,12 +15,13 @@ use zarrs::storage::ReadableStorageTraits;
 use super::layout::Layout;
 use super::layout::LayoutOps;
 use super::ChunkingStrategy;
+use super::Dimensionality;
+use super::ReferenceSystem;
 use super::StorageResult;
 use super::ZarrArray;
 
-use crate::dictionary::Dictionary;
 use crate::io::Graph;
-use crate::utils::subjects_per_chunk;
+use crate::utils::rows_per_shard;
 
 type ZarrType = u8;
 type Chunk = Vec<(u32, u32)>;
@@ -31,10 +32,10 @@ impl<R> Layout<R, ZarrType, Chunk> for MatrixLayout
 where
     R: ReadableStorageTraits + Sized,
 {
-    fn shape(&self, dictionary: &Dictionary, _graph: &Graph) -> Vec<u64> {
+    fn shape(&self, dimensionality: &Dimensionality) -> Vec<u64> {
         vec![
-            dictionary.subjects_size() as u64,
-            dictionary.objects_size() as u64,
+            dimensionality.get_first_term_size(),
+            dimensionality.get_third_term_size(),
         ]
     }
 
@@ -45,28 +46,54 @@ where
     fn chunk_shape(
         &self,
         chunking_strategy: ChunkingStrategy,
-        dictionary: &Dictionary,
+        dimensionality: &Dimensionality,
     ) -> ChunkGrid {
-        vec![chunking_strategy.into(), dictionary.objects_size() as u64].into()
+        vec![
+            chunking_strategy.into(),
+            dimensionality.get_third_term_size(),
+        ]
+        .into()
     }
 
     fn fill_value(&self) -> FillValue {
         FillValue::from(0u8)
     }
 
-    fn dimension_names(&self) -> Option<Vec<DimensionName>> {
-        Some(vec![
-            DimensionName::new("Subjects"),
-            DimensionName::new("Objects"),
-        ])
+    fn dimension_names(&self, reference_system: &ReferenceSystem) -> Option<Vec<DimensionName>> {
+        match reference_system {
+            ReferenceSystem::SPO => Some(vec![
+                DimensionName::new("Subjects"),
+                DimensionName::new("Objects"),
+            ]),
+            ReferenceSystem::SOP => Some(vec![
+                DimensionName::new("Subjects"),
+                DimensionName::new("Predicates"),
+            ]),
+            ReferenceSystem::PSO => Some(vec![
+                DimensionName::new("Predicates"),
+                DimensionName::new("Objects"),
+            ]),
+            ReferenceSystem::POS => Some(vec![
+                DimensionName::new("Predicates"),
+                DimensionName::new("Subjects"),
+            ]),
+            ReferenceSystem::OPS => Some(vec![
+                DimensionName::new("Objects"),
+                DimensionName::new("Subjects"),
+            ]),
+            ReferenceSystem::OSP => Some(vec![
+                DimensionName::new("Objects"),
+                DimensionName::new("Predicates"),
+            ]),
+        }
     }
 
     fn array_to_bytes_codec(
         &self,
-        dictionary: &Dictionary,
+        dimensionality: &Dimensionality,
     ) -> StorageResult<Box<dyn ArrayToBytesCodecTraits>> {
         let mut sharding_codec_builder =
-            ShardingCodecBuilder::new(vec![1, dictionary.objects_size() as u64]);
+            ShardingCodecBuilder::new(vec![1, dimensionality.get_third_term_size()]);
         sharding_codec_builder.bytes_to_bytes_codecs(vec![Box::new(GzipCodec::new(5)?)]);
         Ok(Box::new(sharding_codec_builder.build()))
     }
@@ -80,16 +107,20 @@ where
         graph
     }
 
-    fn chunk_elements(&self, chunk: &[Chunk], objects: usize) -> Vec<ZarrType> {
-        let slice: Vec<AtomicU8> = vec![0u8; chunk.len() * objects]
+    fn chunk_elements(&self, chunk: &[Chunk], columns: usize) -> Vec<ZarrType> {
+        // We create a slice that has the size of the chunk filled with 0 values
+        // having the size of the shard; that is, number of rows, and a given
+        // number of columns. This value is converted into an AtomicU8 for us to
+        // be able to share it among threads
+        let slice: Vec<AtomicU8> = vec![0u8; chunk.len() * columns]
             .iter()
             .map(|&n| AtomicU8::new(n))
             .collect();
 
-        for (i, triples) in chunk.iter().enumerate() {
-            triples.iter().for_each(|&(predicate, object)| {
-                let object_idx = object as usize + i * objects;
-                slice[object_idx].store(predicate as ZarrType, Ordering::Relaxed);
+        for (first_term, triples) in chunk.iter().enumerate() {
+            triples.iter().for_each(|&(second_term, third_term)| {
+                let third_term_idx = third_term as usize + first_term * columns;
+                slice[third_term_idx].store(second_term as ZarrType, Ordering::Relaxed);
             });
         }
 
@@ -99,28 +130,36 @@ where
             .collect::<Vec<ZarrType>>()
     }
 
-    fn parse(&mut self, arr: Array<R>, dictionary: &Dictionary) -> StorageResult<ZarrArray> {
+    fn parse(
+        &mut self,
+        arr: &Array<R>,
+        dimensionality: &Dimensionality,
+    ) -> StorageResult<ZarrArray> {
         let matrix = Mutex::new(TriMat::new((
-            dictionary.subjects_size(),
-            dictionary.objects_size(),
+            dimensionality.first_term_size,
+            dimensionality.third_term_size,
         )));
-        (0..arr.chunk_grid_shape().unwrap()[0]).for_each(|i| {
+        let number_of_chunks = match arr.chunk_grid_shape() {
+            Some(chunk_grid) => chunk_grid[0],
+            None => 0,
+        };
+        (0..number_of_chunks).for_each(|i| {
             // Using this chunking strategy allows us to keep RAM usage low,
             // as we load elements by row
             arr.retrieve_chunk_elements::<ZarrType>(&[i, 0])
                 .unwrap()
-                .chunks(dictionary.objects_size())
+                .chunks(dimensionality.third_term_size)
                 .enumerate()
-                .for_each(|(subject_idx, chunk)| {
+                .for_each(|(first_term_idx, chunk)| {
                     chunk
                         .iter()
                         .enumerate()
-                        .for_each(|(object_idx, &predicate_idx)| {
-                            if predicate_idx != 0 {
-                                matrix.lock().unwrap().add_triplet(
-                                    subject_idx + (i * subjects_per_chunk(&arr)) as usize,
-                                    object_idx,
-                                    predicate_idx,
+                        .for_each(|(third_term_idx, &second_term_idx)| {
+                            if second_term_idx != 0 {
+                                matrix.lock().add_triplet(
+                                    first_term_idx + (i * rows_per_shard(arr)) as usize,
+                                    third_term_idx,
+                                    second_term_idx,
                                 );
                             }
                         })
@@ -129,11 +168,11 @@ where
 
         // We use a CSC Matrix because typically, RDF knowledge graphs tend to
         // have more rows than columns
-        let x = matrix.lock().unwrap();
+        let x = matrix.lock();
         Ok(x.to_csc())
     }
 
-    fn sharding_factor(&self, subjects: usize, _: usize) -> usize {
-        subjects
+    fn sharding_factor(&self, dimensionality: &Dimensionality) -> usize {
+        dimensionality.first_term_size
     }
 }

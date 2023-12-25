@@ -3,10 +3,10 @@ use crate::error::EngineError;
 pub mod array;
 pub mod chunk;
 
-pub type EngineResult<T> = Result<T, EngineError>;
+pub(crate) type EngineResult<T> = Result<T, EngineError>;
 
-pub trait EngineStrategy<T> {
-    fn get_subject(&self, index: usize) -> EngineResult<T>;
-    fn get_predicate(&self, index: u8) -> EngineResult<T>;
-    fn get_object(&self, index: usize) -> EngineResult<T>;
+pub(crate) trait EngineStrategy<T> {
+    fn get_first_term(&self, index: usize) -> EngineResult<T>;
+    fn get_second_term(&self, index: usize) -> EngineResult<T>;
+    fn get_third_term(&self, index: usize) -> EngineResult<T>;
 }

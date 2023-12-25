@@ -1,5 +1,6 @@
+use remote_hdt::error::RemoteHDTError;
 use remote_hdt::storage::matrix::MatrixLayout;
-use remote_hdt::storage::ChunkingStrategy;
+use remote_hdt::storage::params::{ChunkingStrategy, ReferenceSystem, Serialization};
 use remote_hdt::storage::LocalStorage;
 use std::env;
 use std::time::Instant;
@@ -8,24 +9,26 @@ use std::time::Instant;
 #[global_allocator]
 static ALLOCATOR: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-fn main() {
+fn main() -> Result<(), RemoteHDTError> {
     let args: Vec<String> = env::args().collect();
     if args.len() <= 3 {
         panic!("Usage: cargo run --example serialize_bench <rdf_path> <zarr_path> <shard_size>");
     }
-    let rdf_path: &String = &args[1];
-    let zarr_path: &String = &args[2];
-    let shard_size: &String = &args[3];
+
+    let rdf_path = &args[1].as_str();
+    let zarr_path = &args[2].as_str();
+    let shard_size = &args[3].parse::<u64>().unwrap();
 
     let before = Instant::now();
 
-    LocalStorage::new(MatrixLayout)
-        .serialize(
-            &zarr_path.as_str(),
-            &rdf_path.as_str(),
-            ChunkingStrategy::Sharding(shard_size.parse::<u64>().unwrap()),
-        )
-        .unwrap();
+    LocalStorage::new(MatrixLayout, Serialization::Zarr).serialize(
+        zarr_path,
+        rdf_path,
+        ChunkingStrategy::Sharding(*shard_size),
+        ReferenceSystem::SPO,
+    )?;
 
-    println!("Elapsed time: {:.2?}", before.elapsed())
+    println!("Elapsed time: {:.2?}", before.elapsed());
+
+    Ok(())
 }

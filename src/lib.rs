@@ -1,5 +1,5 @@
 pub mod dictionary;
-pub mod engine;
+mod engine;
 pub mod error;
 mod io;
 pub mod storage;

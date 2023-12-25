@@ -33,6 +33,18 @@ pub enum RemoteHDTError {
     GZipCompression(#[from] GzipCompressionLevelError),
     #[error("The Graph you are trying to serialize is empty")]
     EmptyGraph,
+    #[error(transparent)]
+    Ops(#[from] OpsError),
+    #[error("The subjects has not been serialized properly")]
+    SubjectsNotInJSON,
+    #[error("The predicates has not been serialized properly")]
+    PredicatesNotInJSON,
+    #[error("The objects has not been serialized properly")]
+    ObjectsNotInJSON,
+    #[error("The Reference System has not been serialized properly")]
+    ReferenceSystemNotInJSON,
+    #[error("Error serializing the triples of the Graph")]
+    TripleSerialization,
 }
 
 #[derive(Error, Debug)]
@@ -55,4 +67,20 @@ pub enum ParserError {
     NotSupportedFormat(String),
     #[error("No format provided")]
     NoFormatProvided,
+}
+
+#[derive(Error, Debug)]
+pub enum OpsError {
+    #[error(transparent)]
+    Engine(#[from] EngineError),
+    #[error("The provided subject could not be found")]
+    SubjectNotFound,
+    #[error("The provided predicate could not be found")]
+    PredicateNotFound,
+    #[error("The provided object could not be found")]
+    ObjectNotFound,
+    #[error("The array has not been loaded correctly")]
+    EmptyArray,
+    #[error("The sparse array has not been loaded correctly")]
+    EmptySparseArray,
 }

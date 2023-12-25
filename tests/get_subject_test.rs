@@ -1,59 +1,98 @@
-use remote_hdt::{
-    engine::EngineStrategy,
-    storage::{matrix::MatrixLayout, tabular::TabularLayout, ChunkingStrategy, LocalStorage},
-};
+use remote_hdt::storage::matrix::MatrixLayout;
+use remote_hdt::storage::ops::Ops;
+use remote_hdt::storage::ops::OpsFormat;
+use remote_hdt::storage::params::ChunkingStrategy;
+use remote_hdt::storage::params::ReferenceSystem;
+use remote_hdt::storage::params::Serialization;
+use remote_hdt::storage::tabular::TabularLayout;
+use remote_hdt::storage::LocalStorage;
 use sprs::TriMat;
+use std::error::Error;
+
 mod common;
 
 #[test]
-fn get_subject_matrix_chunk_test() {
-    let mut storage = LocalStorage::new(MatrixLayout);
-    common::setup(common::MATRIX_ZARR, &mut storage, ChunkingStrategy::Chunk);
+fn get_subject_matrix_chunk_test() -> Result<(), Box<dyn Error>> {
+    let mut storage = LocalStorage::new(MatrixLayout, Serialization::Zarr);
 
-    let actual = storage
-        .load(common::MATRIX_ZARR)
-        .unwrap()
-        .get_subject(common::Subject::Alan.get_idx(&storage.get_dictionary()))
-        .unwrap();
+    common::setup(
+        common::MATRIX_ZARR,
+        &mut storage,
+        ChunkingStrategy::Chunk,
+        ReferenceSystem::SPO,
+    );
 
-    assert_eq!(actual, vec![2, 4, 5, 0, 0, 0, 0, 7, 8])
+    let actual = match storage
+        .load(common::MATRIX_ZARR)?
+        .get_subject(common::Subject::Alan.into())?
+    {
+        OpsFormat::Zarr(actual) => actual,
+        _ => unreachable!(),
+    };
+
+    if actual == vec![2, 4, 5, 0, 0, 0, 0, 7, 8] {
+        Ok(())
+    } else {
+        Err(String::from("Expected and actual results are not equals").into())
+    }
 }
 
 #[test]
-fn get_subject_matrix_sharding_test() {
-    let mut storage = LocalStorage::new(MatrixLayout);
+fn get_subject_matrix_sharding_test() -> Result<(), Box<dyn Error>> {
+    let mut storage = LocalStorage::new(MatrixLayout, Serialization::Zarr);
+
     common::setup(
         common::SHARDING_ZARR,
         &mut storage,
         ChunkingStrategy::Sharding(3),
+        ReferenceSystem::SPO,
     );
 
-    let actual = storage
-        .load(common::SHARDING_ZARR)
-        .unwrap()
-        .get_subject(3)
-        .unwrap();
+    let actual = match storage
+        .load(common::SHARDING_ZARR)?
+        .get_subject(common::Subject::Wilmslow.into())?
+    {
+        OpsFormat::Zarr(actual) => actual,
+        _ => unreachable!(),
+    };
 
-    assert_eq!(actual, vec![0, 0, 0, 0, 0, 5, 1, 0, 0])
+    if actual == vec![0, 0, 0, 0, 0, 5, 1, 0, 0] {
+        Ok(())
+    } else {
+        Err(String::from("Expected and actual results are not equals").into())
+    }
 }
 
 #[test]
-fn get_subject_tabular_test() {
-    let mut storage = LocalStorage::new(TabularLayout);
-    common::setup(common::TABULAR_ZARR, &mut storage, ChunkingStrategy::Chunk);
+fn get_subject_tabular_test() -> Result<(), Box<dyn Error>> {
+    let mut storage = LocalStorage::new(TabularLayout, Serialization::Sparse);
 
-    let actual = storage
-        .load_sparse(common::TABULAR_ZARR)
-        .unwrap()
-        .get_subject(common::Subject::Alan.get_idx(&storage.get_dictionary()))
-        .unwrap();
+    common::setup(
+        common::TABULAR_ZARR,
+        &mut storage,
+        ChunkingStrategy::Chunk,
+        ReferenceSystem::SPO,
+    );
 
-    let mut result = TriMat::new((4, 9));
-    result.add_triplet(0, 0, 2);
-    result.add_triplet(0, 1, 4);
-    result.add_triplet(0, 2, 5);
-    result.add_triplet(0, 7, 7);
-    result.add_triplet(0, 8, 8);
-    let result = result.to_csc();
-    assert_eq!(actual, result)
+    let actual = match storage
+        .load(common::TABULAR_ZARR)?
+        .get_subject(common::Subject::Alan.into())?
+    {
+        OpsFormat::SparseArray(actual) => actual,
+        _ => unreachable!(),
+    };
+
+    let mut expected = TriMat::new((4, 9));
+    expected.add_triplet(0, 0, 2);
+    expected.add_triplet(0, 1, 4);
+    expected.add_triplet(0, 2, 5);
+    expected.add_triplet(0, 7, 7);
+    expected.add_triplet(0, 8, 8);
+    let expected = expected.to_csc();
+
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(String::from("Expected and actual results are not equals").into())
+    }
 }

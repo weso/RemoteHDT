@@ -1,22 +1,22 @@
-use sprs::{CsMat, TriMat};
+use sprs::TriMat;
 
 use crate::storage::ZarrArray;
 
 use super::{EngineResult, EngineStrategy};
 
-impl EngineStrategy<CsMat<u8>> for ZarrArray {
-    fn get_subject(&self, index: usize) -> EngineResult<CsMat<u8>> {
+impl EngineStrategy<ZarrArray> for ZarrArray {
+    fn get_first_term(&self, index: usize) -> EngineResult<ZarrArray> {
         let mut matrix = TriMat::new((self.rows(), self.rows()));
         matrix.add_triplet(index, index, 1);
         let matrix = matrix.to_csc();
         Ok(&matrix * self)
     }
 
-    fn get_predicate(&self, _value: u8) -> EngineResult<CsMat<u8>> {
+    fn get_second_term(&self, _value: usize) -> EngineResult<ZarrArray> {
         unimplemented!()
     }
 
-    fn get_object(&self, index: usize) -> EngineResult<CsMat<u8>> {
+    fn get_third_term(&self, index: usize) -> EngineResult<ZarrArray> {
         let mut matrix = TriMat::new((self.cols(), self.cols()));
         matrix.add_triplet(index, index, 1);
         let matrix = matrix.to_csc();

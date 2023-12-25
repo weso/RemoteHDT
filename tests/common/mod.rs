@@ -1,14 +1,14 @@
 #![allow(dead_code)]
 
+use remote_hdt::dictionary::Dictionary;
+use remote_hdt::storage::params::ChunkingStrategy;
+use remote_hdt::storage::params::ReferenceSystem;
+use remote_hdt::storage::Storage;
 use safe_transmute::TriviallyTransmutable;
-use sprs::{CsMat, TriMat};
+use sprs::CsMat;
+use sprs::TriMat;
 use std::fs::File;
 use zarrs::storage::store::FilesystemStore;
-
-use remote_hdt::{
-    dictionary::Dictionary,
-    storage::{ChunkingStrategy, Storage},
-};
 
 pub const TABULAR_ZARR: &str = "tests/out/tabular.zarr";
 pub const MATRIX_ZARR: &str = "tests/out/matrix.zarr";
@@ -19,10 +19,16 @@ pub fn setup<T: TriviallyTransmutable, C>(
     path: &str,
     storage: &mut Storage<FilesystemStore, T, C>,
     chunking_strategy: ChunkingStrategy,
+    reference_system: ReferenceSystem,
 ) {
     if File::open(path).is_err() {
         storage
-            .serialize(path, "resources/rdf.nt", chunking_strategy)
+            .serialize(
+                path,
+                "resources/rdf.nt",
+                chunking_strategy,
+                reference_system,
+            )
             .unwrap();
     } else {
         storage.load(path).unwrap();
@@ -37,7 +43,7 @@ pub enum Subject {
 }
 
 impl Subject {
-    pub(crate) fn get_idx(self, dictionary: &Dictionary) -> usize {
+    fn get_idx(self, dictionary: &Dictionary) -> usize {
         dictionary.get_subject_idx_unchecked(self.into())
     }
 }
@@ -65,7 +71,7 @@ pub enum Predicate {
 }
 
 impl Predicate {
-    pub fn get_idx(self, dictionary: &Dictionary) -> u8 {
+    fn get_idx(self, dictionary: &Dictionary) -> u8 {
         dictionary.get_predicate_idx_unchecked(self.into()) as u8
     }
 }
@@ -98,7 +104,7 @@ pub enum Object {
 }
 
 impl Object {
-    pub fn get_idx(self, dictionary: &Dictionary) -> usize {
+    fn get_idx(self, dictionary: &Dictionary) -> usize {
         dictionary.get_object_idx_unchecked(self.into())
     }
 }

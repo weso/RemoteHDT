@@ -50,6 +50,10 @@ impl Dictionary {
         self.subjects.len()
     }
 
+    pub fn predicates_size(&self) -> usize {
+        self.predicates.len()
+    }
+
     pub fn objects_size(&self) -> usize {
         self.objects.len()
     }
