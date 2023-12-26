@@ -1,6 +1,5 @@
 use parking_lot::Mutex;
 use sprs::TriMat;
-use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use zarrs::array::codec::array_to_bytes::sharding::ShardingCodecBuilder;
 use zarrs::array::codec::ArrayToBytesCodecTraits;
@@ -14,16 +13,17 @@ use zarrs::storage::ReadableStorageTraits;
 
 use super::layout::Layout;
 use super::layout::LayoutOps;
+use super::AtomicZarrType;
 use super::ChunkingStrategy;
 use super::Dimensionality;
 use super::ReferenceSystem;
 use super::StorageResult;
 use super::ZarrArray;
+use super::ZarrType;
 
 use crate::io::Graph;
 use crate::utils::rows_per_shard;
 
-type ZarrType = u8;
 type Chunk = Vec<(u32, u32)>;
 
 pub struct MatrixLayout;
@@ -40,7 +40,7 @@ where
     }
 
     fn data_type(&self) -> DataType {
-        DataType::UInt8
+        DataType::UInt64
     }
 
     fn chunk_shape(
@@ -56,7 +56,7 @@ where
     }
 
     fn fill_value(&self) -> FillValue {
-        FillValue::from(0u8)
+        FillValue::from(0 as ZarrType)
     }
 
     fn dimension_names(&self, reference_system: &ReferenceSystem) -> Option<Vec<DimensionName>> {
@@ -112,9 +112,9 @@ where
         // having the size of the shard; that is, number of rows, and a given
         // number of columns. This value is converted into an AtomicU8 for us to
         // be able to share it among threads
-        let slice: Vec<AtomicU8> = vec![0u8; chunk.len() * columns]
+        let slice: Vec<AtomicZarrType> = vec![0 as ZarrType; chunk.len() * columns]
             .iter()
-            .map(|&n| AtomicU8::new(n))
+            .map(|&n| AtomicZarrType::new(n))
             .collect();
 
         for (first_term, triples) in chunk.iter().enumerate() {

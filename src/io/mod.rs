@@ -42,8 +42,16 @@ trait Backend<T: TriplesParser, E: From<<T>::Error>> {
             return Err(ParserError::Dictionary(err));
         }
 
-        let mut graph = vec![Vec::new(); subjects.len()];
-        let dictionary = Dictionary::from_set_terms(subjects, predicates, objects);
+        let mut graph = vec![
+            Vec::new();
+            match reference_system {
+                ReferenceSystem::SPO | ReferenceSystem::SOP => subjects.len(),
+                ReferenceSystem::PSO | ReferenceSystem::POS => predicates.len(),
+                ReferenceSystem::OSP | ReferenceSystem::OPS => objects.len(),
+            }
+        ];
+        let dictionary =
+            Dictionary::from_set_terms(reference_system.to_owned(), subjects, predicates, objects);
 
         if let Err(err) = Self::parser_fn(path, &mut |triple: Triple| {
             {

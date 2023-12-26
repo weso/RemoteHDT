@@ -107,9 +107,10 @@ where
             // as we load elements by row
             if let Ok(chunk_elements) = arr.retrieve_chunk_elements::<usize>(&[i as ZarrType, 0]) {
                 chunk_elements.chunks(3).for_each(|triple| {
+                    println!("{} {} {}", triple[0], triple[2], triple[1] as ZarrType);
                     matrix
                         .lock()
-                        .add_triplet(triple[0], triple[2], triple[1] as u8);
+                        .add_triplet(triple[0], triple[2], triple[1] as ZarrType);
                 })
             }
         });
@@ -117,6 +118,7 @@ where
         // We use a CSC Matrix because typically, RDF knowledge graphs tend to
         // have more rows than columns
         let x = matrix.lock();
+
         Ok(x.to_csc())
     }
 

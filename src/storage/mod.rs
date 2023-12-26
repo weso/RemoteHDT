@@ -3,6 +3,7 @@ use serde_json::Map;
 use sprs::CsMat;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use zarrs::array::Array;
 use zarrs::array::ArrayBuilder;
@@ -29,7 +30,9 @@ pub mod ops;
 pub mod params;
 pub mod tabular;
 
-pub type ZarrArray = CsMat<u8>;
+pub type ZarrArray = CsMat<ZarrType>;
+pub type ZarrType = u64;
+type AtomicZarrType = AtomicU64;
 pub type StorageResult<T> = Result<T, RemoteHDTError>;
 pub type LocalStorage<T, C> = Storage<FilesystemStore, T, C>;
 pub type HTTPStorage<T, C> = Storage<HTTPStore, T, C>;
@@ -70,11 +73,10 @@ impl<R: ReadableStorageTraits, T: TriviallyTransmutable, C> Storage<R, T, C> {
     fn process_zarr(&mut self, storage: R) -> StorageResult<&Self> {
         let store = Arc::new(storage);
         let arr = Array::new(store, ARRAY_NAME)?;
-        let (dictionary, ref_system) = self.layout.retrieve_attributes(&arr)?;
+        let dictionary = self.layout.retrieve_attributes(&arr)?;
         self.dictionary = dictionary;
-        self.reference_system = ref_system;
-        self.dimensionality =
-            Dimensionality::new(&self.reference_system, &self.dictionary, &Graph::default());
+        self.reference_system = self.dictionary.get_reference_system();
+        self.dimensionality = Dimensionality::new(&self.dictionary, &Graph::default());
 
         match self.serialization {
             Serialization::Zarr => self.array = Some(arr),
@@ -126,8 +128,7 @@ impl<T: TriviallyTransmutable, C> LocalStorage<T, C> {
         let graph = match RdfParser::parse(rdf_path, &reference_system) {
             Ok((graph, dictionary)) => {
                 self.dictionary = dictionary;
-                self.dimensionality =
-                    Dimensionality::new(&reference_system, &self.dictionary, &graph);
+                self.dimensionality = Dimensionality::new(&self.dictionary, &graph);
                 graph
             }
             Err(_) => todo!(),
@@ -155,7 +156,7 @@ impl<T: TriviallyTransmutable, C> LocalStorage<T, C> {
             attributes.insert("objects".into(), rdf_to_value(objects));
             attributes.insert("reference_system".into(), reference_system.as_ref().into());
             attributes
-        }) // TODO: one attribute should be the Layout
+        })
         .build(store, ARRAY_NAME)?;
 
         arr.store_metadata()?;

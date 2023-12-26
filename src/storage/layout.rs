@@ -27,10 +27,7 @@ use super::ZarrArray;
 type ArrayToBytesCodec = Box<dyn ArrayToBytesCodecTraits>;
 
 pub trait LayoutOps<R, T: TriviallyTransmutable, C> {
-    fn retrieve_attributes(
-        &mut self,
-        arr: &Array<R>,
-    ) -> StorageResult<(Dictionary, ReferenceSystem)> {
+    fn retrieve_attributes(&mut self, arr: &Array<R>) -> StorageResult<Dictionary> {
         // 4. We get the attributes so we can obtain some values that we will need
         let attributes = arr.attributes();
 
@@ -55,16 +52,18 @@ pub trait LayoutOps<R, T: TriviallyTransmutable, C> {
         .unwrap()
         .into();
 
-        Ok((
-            Dictionary::from_vec_str(subjects, predicates, objects),
+        Ok(Dictionary::from_vec_str(
             reference_system,
+            subjects,
+            predicates,
+            objects,
         ))
     }
 
     fn serialize(&mut self, arr: Array<FilesystemStore>, graph: Graph) -> StorageResult<()> {
         let columns = arr.shape()[1] as usize;
         let count = AtomicU64::new(0);
-        let binding = self.graph_iter(graph);
+        let binding = self.graph_iter(graph.to_owned());
         let iter = binding.chunks_exact(rows_per_shard(&arr) as usize);
         let remainder = iter.remainder();
 

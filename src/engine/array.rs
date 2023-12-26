@@ -2,7 +2,8 @@ use sprs::TriMat;
 
 use crate::storage::ZarrArray;
 
-use super::{EngineResult, EngineStrategy};
+use super::EngineResult;
+use super::EngineStrategy;
 
 impl EngineStrategy<ZarrArray> for ZarrArray {
     fn get_first_term(&self, index: usize) -> EngineResult<ZarrArray> {

@@ -4,6 +4,7 @@ use remote_hdt::dictionary::Dictionary;
 use remote_hdt::storage::params::ChunkingStrategy;
 use remote_hdt::storage::params::ReferenceSystem;
 use remote_hdt::storage::Storage;
+use remote_hdt::storage::ZarrType;
 use safe_transmute::TriviallyTransmutable;
 use sprs::CsMat;
 use sprs::TriMat;
@@ -14,6 +15,10 @@ pub const TABULAR_ZARR: &str = "tests/out/tabular.zarr";
 pub const MATRIX_ZARR: &str = "tests/out/matrix.zarr";
 pub const SHARDING_ZARR: &str = "tests/out/sharding.zarr";
 pub const LARGER_ZARR: &str = "tests/out/larger.zarr";
+pub const PSO_ZARR: &str = "tests/out/pso.zarr";
+pub const OPS_ZARR: &str = "tests/out/ops.zarr";
+pub const TABULAR_PSO_ZARR: &str = "tests/out/tabular_pso.zarr";
+pub const TABULAR_OPS_ZARR: &str = "tests/out/tabular_ops.zarr";
 
 pub fn setup<T: TriviallyTransmutable, C>(
     path: &str,
@@ -71,8 +76,8 @@ pub enum Predicate {
 }
 
 impl Predicate {
-    fn get_idx(self, dictionary: &Dictionary) -> u8 {
-        dictionary.get_predicate_idx_unchecked(self.into()) as u8
+    fn get_idx(self, dictionary: &Dictionary) -> ZarrType {
+        dictionary.get_predicate_idx_unchecked(self.into()) as ZarrType
     }
 }
 
@@ -128,7 +133,7 @@ impl From<Object> for &str {
 pub struct Graph;
 
 impl Graph {
-    pub fn new(dictionary: &Dictionary) -> CsMat<u8> {
+    pub fn new(dictionary: &Dictionary) -> CsMat<ZarrType> {
         let mut ans = TriMat::new((4, 9));
 
         ans.add_triplet(

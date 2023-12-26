@@ -8,12 +8,13 @@ use super::params::ReferenceSystem;
 use super::params::Serialization;
 use super::Storage;
 use super::ZarrArray;
+use super::ZarrType;
 
 pub type OpsResult = Result<OpsFormat, OpsError>;
 
 pub enum OpsFormat {
     SparseArray(ZarrArray),
-    Zarr(Vec<u8>),
+    Zarr(Vec<ZarrType>),
 }
 
 pub trait Ops {
