@@ -1,11 +1,12 @@
 use remote_hdt::storage::matrix::MatrixLayout;
 use remote_hdt::storage::ops::Ops;
 use remote_hdt::storage::ops::OpsFormat;
+use remote_hdt::storage::params::Backend;
 use remote_hdt::storage::params::ChunkingStrategy;
 use remote_hdt::storage::params::ReferenceSystem;
 use remote_hdt::storage::params::Serialization;
 use remote_hdt::storage::tabular::TabularLayout;
-use remote_hdt::storage::LocalStorage;
+use remote_hdt::storage::Storage;
 use sprs::TriMat;
 use std::error::Error;
 
@@ -13,7 +14,7 @@ mod common;
 
 #[test]
 fn get_object_matrix_sharding_test() -> Result<(), Box<dyn Error>> {
-    let mut storage = LocalStorage::new(MatrixLayout, Serialization::Zarr);
+    let mut storage = Storage::new(MatrixLayout, Serialization::Zarr);
 
     common::setup(
         common::SHARDING_ZARR,
@@ -23,7 +24,7 @@ fn get_object_matrix_sharding_test() -> Result<(), Box<dyn Error>> {
     );
 
     let actual = match storage
-        .load(common::SHARDING_ZARR)?
+        .load(Backend::FileSystem(common::SHARDING_ZARR))?
         .get_object(common::Object::Date.into())?
     {
         OpsFormat::Zarr(actual) => actual,
@@ -40,7 +41,7 @@ fn get_object_matrix_sharding_test() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn get_object_tabular_test() -> Result<(), Box<dyn Error>> {
-    let mut storage = LocalStorage::new(TabularLayout, Serialization::Sparse);
+    let mut storage = Storage::new(TabularLayout, Serialization::Sparse);
 
     common::setup(
         common::TABULAR_ZARR,
@@ -50,7 +51,7 @@ fn get_object_tabular_test() -> Result<(), Box<dyn Error>> {
     );
 
     let actual = match storage
-        .load(common::TABULAR_ZARR)?
+        .load(Backend::FileSystem(common::TABULAR_ZARR))?
         .get_object(common::Object::Alan.into())?
     {
         OpsFormat::SparseArray(actual) => actual,

@@ -1,8 +1,8 @@
 use remote_hdt::error::RemoteHDTError;
 use remote_hdt::storage::matrix::MatrixLayout;
 use remote_hdt::storage::ops::Ops;
-use remote_hdt::storage::params::Serialization;
-use remote_hdt::storage::LocalStorage;
+use remote_hdt::storage::params::{Backend, Serialization};
+use remote_hdt::storage::Storage;
 use std::env;
 use std::time::Instant;
 
@@ -17,8 +17,8 @@ fn main() -> Result<(), RemoteHDTError> {
     let number_of_universities: &String = &args[1];
     let zarr_path = format!("{}-lubm", number_of_universities);
 
-    let mut remote_hdt = LocalStorage::new(MatrixLayout, Serialization::Zarr);
-    let arr = remote_hdt.load(format!("{}.zarr", zarr_path).as_str())?;
+    let mut binding = Storage::new(MatrixLayout, Serialization::Zarr);
+    let arr = binding.load(Backend::FileSystem(format!("{}.zarr", zarr_path).as_str()))?;
 
     let before = Instant::now();
     arr.get_subject(SUBJECT)?;

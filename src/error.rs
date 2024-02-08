@@ -4,6 +4,7 @@ use zarrs::array::codec::bytes_to_bytes::gzip::GzipCompressionLevelError;
 use zarrs::array::ArrayCreateError;
 use zarrs::array::ArrayError;
 use zarrs::array_subset::IncompatibleDimensionalityError;
+use zarrs::array_subset::IncompatibleStartEndIndicesError;
 use zarrs::group::GroupCreateError;
 use zarrs::storage::store::FilesystemStoreCreateError;
 use zarrs::storage::store::HTTPStoreCreateError;
@@ -29,6 +30,8 @@ pub enum RemoteHDTError {
     HTTPCreate(#[from] HTTPStoreCreateError),
     #[error("The Path already exists, please provide an empty path")]
     PathExists,
+    #[error("The Path does not exist, please provide another path")]
+    PathDoesNotExist,
     #[error(transparent)]
     GZipCompression(#[from] GzipCompressionLevelError),
     #[error("The Graph you are trying to serialize is empty")]
@@ -45,6 +48,14 @@ pub enum RemoteHDTError {
     ReferenceSystemNotInJSON,
     #[error("Error serializing the triples of the Graph")]
     TripleSerialization,
+    #[error("The provided path is not valid")]
+    OsPathToString,
+    #[error(transparent)]
+    Opendal(#[from] zarrs::opendal::Error),
+    #[error("The provided backend is read-only")]
+    ReadOnlyBackend,
+    #[error("Error while parsing the RDF graph")]
+    RdfParse,
 }
 
 #[derive(Error, Debug)]
@@ -55,6 +66,8 @@ pub enum EngineError {
     Array(#[from] ArrayError),
     #[error("Operation error")]
     Operation,
+    #[error(transparent)]
+    IncompatibleStartEndIndicesError(#[from] IncompatibleStartEndIndicesError),
 }
 
 #[derive(Error, Debug)]

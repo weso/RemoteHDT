@@ -1,15 +1,13 @@
 #![allow(dead_code)]
 
 use remote_hdt::dictionary::Dictionary;
+use remote_hdt::storage::params::Backend;
 use remote_hdt::storage::params::ChunkingStrategy;
 use remote_hdt::storage::params::ReferenceSystem;
 use remote_hdt::storage::Storage;
-use remote_hdt::storage::ZarrType;
-use safe_transmute::TriviallyTransmutable;
 use sprs::CsMat;
 use sprs::TriMat;
 use std::fs::File;
-use zarrs::storage::store::FilesystemStore;
 
 pub const TABULAR_ZARR: &str = "tests/out/tabular.zarr";
 pub const MATRIX_ZARR: &str = "tests/out/matrix.zarr";
@@ -20,23 +18,23 @@ pub const OPS_ZARR: &str = "tests/out/ops.zarr";
 pub const TABULAR_PSO_ZARR: &str = "tests/out/tabular_pso.zarr";
 pub const TABULAR_OPS_ZARR: &str = "tests/out/tabular_ops.zarr";
 
-pub fn setup<T: TriviallyTransmutable, C>(
+pub fn setup<C>(
     path: &str,
-    storage: &mut Storage<FilesystemStore, T, C>,
+    storage: &mut Storage<C>,
     chunking_strategy: ChunkingStrategy,
     reference_system: ReferenceSystem,
 ) {
     if File::open(path).is_err() {
         storage
             .serialize(
-                path,
+                Backend::FileSystem(path),
                 "resources/rdf.nt",
                 chunking_strategy,
                 reference_system,
             )
             .unwrap();
     } else {
-        storage.load(path).unwrap();
+        storage.load(Backend::FileSystem(path)).unwrap();
     }
 }
 
@@ -76,8 +74,8 @@ pub enum Predicate {
 }
 
 impl Predicate {
-    fn get_idx(self, dictionary: &Dictionary) -> ZarrType {
-        dictionary.get_predicate_idx_unchecked(self.into()) as ZarrType
+    fn get_idx(self, dictionary: &Dictionary) -> usize {
+        dictionary.get_predicate_idx_unchecked(self.into())
     }
 }
 
@@ -133,7 +131,7 @@ impl From<Object> for &str {
 pub struct Graph;
 
 impl Graph {
-    pub fn new(dictionary: &Dictionary) -> CsMat<ZarrType> {
+    pub fn new(dictionary: &Dictionary) -> CsMat<usize> {
         let mut ans = TriMat::new((4, 9));
 
         ans.add_triplet(

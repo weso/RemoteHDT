@@ -1,7 +1,7 @@
 use remote_hdt::error::RemoteHDTError;
 use remote_hdt::storage::matrix::MatrixLayout;
-use remote_hdt::storage::params::{ChunkingStrategy, ReferenceSystem, Serialization};
-use remote_hdt::storage::LocalStorage;
+use remote_hdt::storage::params::{Backend, ChunkingStrategy, ReferenceSystem, Serialization};
+use remote_hdt::storage::Storage;
 use std::env;
 use std::time::Instant;
 
@@ -21,8 +21,8 @@ fn main() -> Result<(), RemoteHDTError> {
 
     let before = Instant::now();
 
-    LocalStorage::new(MatrixLayout, Serialization::Zarr).serialize(
-        zarr_path,
+    Storage::new(MatrixLayout, Serialization::Zarr).serialize(
+        Backend::FileSystem(zarr_path),
         rdf_path,
         ChunkingStrategy::Sharding(*shard_size),
         ReferenceSystem::SPO,

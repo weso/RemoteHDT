@@ -1,7 +1,7 @@
 use remote_hdt::error::RemoteHDTError;
-use remote_hdt::storage::params::Serialization;
+use remote_hdt::storage::params::{Backend, Serialization};
 use remote_hdt::storage::tabular::TabularLayout;
-use remote_hdt::storage::LocalStorage;
+use remote_hdt::storage::Storage;
 use std::env;
 use std::time::Instant;
 
@@ -16,8 +16,8 @@ fn main() -> Result<(), RemoteHDTError> {
 
     let before = Instant::now();
 
-    LocalStorage::new(TabularLayout, Serialization::Zarr)
-        .load(format!("{}.zarr", zarr_path).as_str())?;
+    Storage::new(TabularLayout, Serialization::Zarr)
+        .load(Backend::FileSystem(format!("{}.zarr", zarr_path).as_str()))?;
 
     println!("Elapsed time: {:.2?}", before.elapsed());
 

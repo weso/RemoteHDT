@@ -1,18 +1,19 @@
 use remote_hdt::storage::matrix::MatrixLayout;
 use remote_hdt::storage::ops::Ops;
 use remote_hdt::storage::ops::OpsFormat;
+use remote_hdt::storage::params::Backend;
 use remote_hdt::storage::params::ChunkingStrategy;
 use remote_hdt::storage::params::ReferenceSystem;
 use remote_hdt::storage::params::Serialization;
 use remote_hdt::storage::tabular::TabularLayout;
-use remote_hdt::storage::LocalStorage;
+use remote_hdt::storage::Storage;
 use std::error::Error;
 
 mod common;
 
 #[test]
 fn orientation_pso_matrix_test() -> Result<(), Box<dyn Error>> {
-    let mut storage = LocalStorage::new(MatrixLayout, Serialization::Zarr);
+    let mut storage = Storage::new(MatrixLayout, Serialization::Zarr);
 
     common::setup(
         common::PSO_ZARR,
@@ -22,7 +23,7 @@ fn orientation_pso_matrix_test() -> Result<(), Box<dyn Error>> {
     );
 
     let actual = match storage
-        .load(common::PSO_ZARR)?
+        .load(Backend::FileSystem(common::PSO_ZARR))?
         .get_predicate(common::Predicate::InstanceOf.into())?
     {
         OpsFormat::Zarr(actual) => actual,
@@ -38,7 +39,7 @@ fn orientation_pso_matrix_test() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn orientation_ops_matrix_test() -> Result<(), Box<dyn Error>> {
-    let mut storage = LocalStorage::new(MatrixLayout, Serialization::Zarr);
+    let mut storage = Storage::new(MatrixLayout, Serialization::Zarr);
 
     common::setup(
         common::OPS_ZARR,
@@ -48,7 +49,7 @@ fn orientation_ops_matrix_test() -> Result<(), Box<dyn Error>> {
     );
 
     let actual = match storage
-        .load(common::OPS_ZARR)?
+        .load(Backend::FileSystem(common::OPS_ZARR))?
         .get_object(common::Object::Alan.into())?
     {
         OpsFormat::Zarr(actual) => actual,
@@ -65,7 +66,7 @@ fn orientation_ops_matrix_test() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn orientation_pso_tabular_test() -> Result<(), Box<dyn Error>> {
-    let mut storage = LocalStorage::new(TabularLayout, Serialization::Sparse);
+    let mut storage = Storage::new(TabularLayout, Serialization::Sparse);
 
     common::setup(
         common::TABULAR_PSO_ZARR,
@@ -75,7 +76,7 @@ fn orientation_pso_tabular_test() -> Result<(), Box<dyn Error>> {
     );
 
     let actual = match storage
-        .load(common::TABULAR_PSO_ZARR)?
+        .load(Backend::FileSystem(common::TABULAR_PSO_ZARR))?
         .get_predicate(common::Predicate::InstanceOf.into())?
     {
         OpsFormat::SparseArray(actual) => actual,
@@ -125,7 +126,7 @@ fn orientation_pso_tabular_test() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn orientation_ops_tabular_test() -> Result<(), Box<dyn Error>> {
-    let mut storage = LocalStorage::new(TabularLayout, Serialization::Zarr);
+    let mut storage = Storage::new(TabularLayout, Serialization::Zarr);
 
     common::setup(
         common::TABULAR_OPS_ZARR,
@@ -135,7 +136,7 @@ fn orientation_ops_tabular_test() -> Result<(), Box<dyn Error>> {
     );
 
     let actual = match storage
-        .load(common::TABULAR_OPS_ZARR)?
+        .load(Backend::FileSystem(common::TABULAR_OPS_ZARR))?
         .get_subject(common::Subject::Alan.into())?
     {
         OpsFormat::Zarr(actual) => actual,

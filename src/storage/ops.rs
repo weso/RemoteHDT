@@ -1,6 +1,3 @@
-use safe_transmute::TriviallyTransmutable;
-use zarrs::storage::ReadableStorageTraits;
-
 use crate::engine::EngineStrategy;
 use crate::error::OpsError;
 
@@ -8,13 +5,12 @@ use super::params::ReferenceSystem;
 use super::params::Serialization;
 use super::Storage;
 use super::ZarrArray;
-use super::ZarrType;
 
 pub type OpsResult = Result<OpsFormat, OpsError>;
 
 pub enum OpsFormat {
     SparseArray(ZarrArray),
-    Zarr(Vec<ZarrType>),
+    Zarr(Vec<usize>),
 }
 
 pub trait Ops {
@@ -23,7 +19,7 @@ pub trait Ops {
     fn get_object(&self, object: &str) -> OpsResult;
 }
 
-impl<R: ReadableStorageTraits, T: TriviallyTransmutable, C> Ops for Storage<R, T, C> {
+impl<C> Ops for Storage<C> {
     fn get_subject(&self, subject: &str) -> OpsResult {
         let index = match self.dictionary.get_subject_idx(subject) {
             Some(index) => index,

@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use fcsd::Set;
+use std::collections::HashSet;
 
 use crate::storage::params::ReferenceSystem;
 

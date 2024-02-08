@@ -1,15 +1,14 @@
 use parking_lot::Mutex;
 use sprs::TriMat;
+use std::num::NonZeroU64;
 use std::sync::atomic::Ordering;
 use zarrs::array::codec::array_to_bytes::sharding::ShardingCodecBuilder;
 use zarrs::array::codec::ArrayToBytesCodecTraits;
 use zarrs::array::codec::GzipCodec;
-use zarrs::array::Array;
 use zarrs::array::ChunkGrid;
 use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
-use zarrs::storage::ReadableStorageTraits;
 
 use super::layout::Layout;
 use super::layout::LayoutOps;
@@ -18,20 +17,14 @@ use super::ChunkingStrategy;
 use super::Dimensionality;
 use super::ReferenceSystem;
 use super::StorageResult;
-use super::ZarrArray;
-use super::ZarrType;
 
 use crate::io::Graph;
-use crate::utils::rows_per_shard;
 
 type Chunk = Vec<(u32, u32)>;
 
 pub struct MatrixLayout;
 
-impl<R> Layout<R, ZarrType, Chunk> for MatrixLayout
-where
-    R: ReadableStorageTraits + Sized,
-{
+impl Layout<Chunk> for MatrixLayout {
     fn shape(&self, dimensionality: &Dimensionality) -> Vec<u64> {
         vec![
             dimensionality.get_first_term_size(),
@@ -50,13 +43,13 @@ where
     ) -> ChunkGrid {
         vec![
             chunking_strategy.into(),
-            dimensionality.get_third_term_size(),
+            NonZeroU64::new(dimensionality.get_third_term_size()).unwrap(),
         ]
         .into()
     }
 
     fn fill_value(&self) -> FillValue {
-        FillValue::from(0 as ZarrType)
+        FillValue::from(0u64)
     }
 
     fn dimension_names(&self, reference_system: &ReferenceSystem) -> Option<Vec<DimensionName>> {
@@ -92,27 +85,29 @@ where
         &self,
         dimensionality: &Dimensionality,
     ) -> StorageResult<Box<dyn ArrayToBytesCodecTraits>> {
-        let mut sharding_codec_builder =
-            ShardingCodecBuilder::new(vec![1, dimensionality.get_third_term_size()]);
+        let mut sharding_codec_builder = ShardingCodecBuilder::new(
+            vec![
+                NonZeroU64::new(1).unwrap(),
+                NonZeroU64::new(dimensionality.get_third_term_size()).unwrap(),
+            ]
+            .into(),
+        );
         sharding_codec_builder.bytes_to_bytes_codecs(vec![Box::new(GzipCodec::new(5)?)]);
         Ok(Box::new(sharding_codec_builder.build()))
     }
 }
 
-impl<R> LayoutOps<R, ZarrType, Chunk> for MatrixLayout
-where
-    R: ReadableStorageTraits + Sized,
-{
+impl LayoutOps<Chunk> for MatrixLayout {
     fn graph_iter(&self, graph: Graph) -> Vec<Chunk> {
         graph
     }
 
-    fn chunk_elements(&self, chunk: &[Chunk], columns: usize) -> Vec<ZarrType> {
+    fn store_chunk_elements(&self, chunk: &[Chunk], columns: usize) -> Vec<u64> {
         // We create a slice that has the size of the chunk filled with 0 values
         // having the size of the shard; that is, number of rows, and a given
         // number of columns. This value is converted into an AtomicU8 for us to
         // be able to share it among threads
-        let slice: Vec<AtomicZarrType> = vec![0 as ZarrType; chunk.len() * columns]
+        let slice: Vec<AtomicZarrType> = vec![0u64; chunk.len() * columns]
             .iter()
             .map(|&n| AtomicZarrType::new(n))
             .collect();
@@ -120,56 +115,36 @@ where
         for (first_term, triples) in chunk.iter().enumerate() {
             triples.iter().for_each(|&(second_term, third_term)| {
                 let third_term_idx = third_term as usize + first_term * columns;
-                slice[third_term_idx].store(second_term as ZarrType, Ordering::Relaxed);
+                slice[third_term_idx].store(second_term as u64, Ordering::Relaxed);
             });
         }
 
         slice
             .iter()
             .map(|elem| elem.load(Ordering::Relaxed))
-            .collect::<Vec<ZarrType>>()
+            .collect::<Vec<u64>>()
     }
 
-    fn parse(
+    fn retrieve_chunk_elements(
         &mut self,
-        arr: &Array<R>,
-        dimensionality: &Dimensionality,
-    ) -> StorageResult<ZarrArray> {
-        let matrix = Mutex::new(TriMat::new((
-            dimensionality.first_term_size,
-            dimensionality.third_term_size,
-        )));
-        let number_of_chunks = match arr.chunk_grid_shape() {
-            Some(chunk_grid) => chunk_grid[0],
-            None => 0,
-        };
-        (0..number_of_chunks).for_each(|i| {
-            // Using this chunking strategy allows us to keep RAM usage low,
-            // as we load elements by row
-            arr.retrieve_chunk_elements::<ZarrType>(&[i, 0])
-                .unwrap()
-                .chunks(dimensionality.third_term_size)
-                .enumerate()
-                .for_each(|(first_term_idx, chunk)| {
-                    chunk
-                        .iter()
-                        .enumerate()
-                        .for_each(|(third_term_idx, &second_term_idx)| {
-                            if second_term_idx != 0 {
-                                matrix.lock().add_triplet(
-                                    first_term_idx + (i * rows_per_shard(arr)) as usize,
-                                    third_term_idx,
-                                    second_term_idx,
-                                );
-                            }
-                        })
-                })
-        });
-
-        // We use a CSC Matrix because typically, RDF knowledge graphs tend to
-        // have more rows than columns
-        let x = matrix.lock();
-        Ok(x.to_csc())
+        matrix: &Mutex<TriMat<usize>>,
+        i: u64,
+        number_of_columns: u64,
+        first_term_idx: usize,
+        chunk: &[usize],
+    ) {
+        chunk
+            .iter()
+            .enumerate()
+            .for_each(|(third_term_idx, &second_term_idx)| {
+                if second_term_idx != 0 {
+                    matrix.lock().add_triplet(
+                        first_term_idx + (i * number_of_columns) as usize,
+                        third_term_idx,
+                        second_term_idx,
+                    );
+                }
+            })
     }
 
     fn sharding_factor(&self, dimensionality: &Dimensionality) -> usize {

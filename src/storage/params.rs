@@ -1,5 +1,12 @@
+use std::num::NonZeroU64;
+
 use crate::dictionary::Dictionary;
 use crate::io::Graph;
+
+pub enum Backend<'a> {
+    FileSystem(&'a str),
+    HTTP(&'a str),
+}
 
 pub enum Serialization {
     Zarr,
@@ -35,12 +42,12 @@ pub struct Dimensionality {
     pub(crate) third_term_size: usize,
 }
 
-impl From<ChunkingStrategy> for u64 {
+impl From<ChunkingStrategy> for NonZeroU64 {
     fn from(value: ChunkingStrategy) -> Self {
         match value {
-            ChunkingStrategy::Chunk => 1,
-            ChunkingStrategy::Sharding(size) => size,
-            ChunkingStrategy::Best => 16, // TODO: set to the number of threads
+            ChunkingStrategy::Chunk => NonZeroU64::new(1).unwrap(),
+            ChunkingStrategy::Sharding(size) => NonZeroU64::new(size).unwrap(),
+            ChunkingStrategy::Best => NonZeroU64::new(16).unwrap(), // TODO: set to the number of threads
         }
     }
 }
