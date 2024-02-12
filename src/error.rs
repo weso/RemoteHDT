@@ -3,6 +3,7 @@ use thiserror::Error;
 use zarrs::array::codec::bytes_to_bytes::gzip::GzipCompressionLevelError;
 use zarrs::array::ArrayCreateError;
 use zarrs::array::ArrayError;
+use zarrs::array::NonZeroError;
 use zarrs::array_subset::IncompatibleDimensionalityError;
 use zarrs::array_subset::IncompatibleStartEndIndicesError;
 use zarrs::group::GroupCreateError;
@@ -56,6 +57,8 @@ pub enum RemoteHDTError {
     ReadOnlyBackend,
     #[error("Error while parsing the RDF graph")]
     RdfParse,
+    #[error(transparent)]
+    NonZero(#[from] NonZeroError),
 }
 
 #[derive(Error, Debug)]

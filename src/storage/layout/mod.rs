@@ -29,7 +29,7 @@ type ArrayToBytesCodec = Box<dyn ArrayToBytesCodecTraits>;
 pub mod matrix;
 pub mod tabular;
 
-pub(crate) trait LayoutOps<C> {
+pub trait LayoutOps<C> {
     fn retrieve_attributes(&mut self, arr: &Array<OpendalStore>) -> StorageResult<Dictionary> {
         // 4. We get the attributes so we can obtain some values that we will need
         let attributes = arr.attributes();
@@ -70,13 +70,13 @@ pub(crate) trait LayoutOps<C> {
         let iter = binding.chunks_exact(rows_per_shard(&arr) as usize);
         let remainder = iter.remainder();
 
-        let _ = iter.map(|chunk| {
-            count.fetch_add(1, Ordering::Relaxed);
+        for chunk in iter {
             arr.store_chunk_elements(
                 &[count.load(Ordering::Relaxed), 0],
                 self.store_chunk_elements(chunk, columns),
-            )
-        });
+            )?;
+            count.fetch_add(1, Ordering::Relaxed);
+        }
 
         if !remainder.is_empty() {
             arr.store_array_subset_elements(
@@ -108,10 +108,11 @@ pub(crate) trait LayoutOps<C> {
             dimensionality.third_term_size, // we obtain the size of the third terms
         )));
 
-        // We compute the number of chunks; for us to achieve so, we have to obtain
+        // We compute the number of shards; for us to achieve so, we have to obtain
         // first dimension of the chunk grid
-        let number_of_chunks = match arr.chunk_grid_shape() {
+        let number_of_shards = match arr.chunk_grid_shape() {
             Some(chunk_grid) => chunk_grid[0],
+
             None => 0,
         };
 
@@ -123,16 +124,16 @@ pub(crate) trait LayoutOps<C> {
         // low, as instead of parsing the whole array, we process smaller pieces
         // of it. Once we have all the pieces processed, we will have parsed the
         // whole array
-        for i in 0..number_of_chunks {
-            arr.retrieve_chunk_elements(&[i, 0])?
+        for shard in 0..number_of_shards {
+            arr.retrieve_chunk_elements(&[shard, 0])?
+                // We divide each shard by the number of columns, as a shard is
+                // composed of chunks having the size of [1, number of cols]
                 .chunks(number_of_columns)
                 .enumerate()
                 .for_each(|(first_term_idx, chunk)| {
                     self.retrieve_chunk_elements(
                         &matrix,
-                        i,
-                        number_of_columns as u64,
-                        first_term_idx,
+                        first_term_idx + (shard * rows_per_shard(arr)) as usize,
                         chunk,
                     );
                 })
@@ -150,15 +151,13 @@ pub(crate) trait LayoutOps<C> {
     fn retrieve_chunk_elements(
         &mut self,
         matrix: &Mutex<TriMat<usize>>,
-        i: u64,
-        number_of_columns: u64,
         first_term_idx: usize,
         chunk: &[usize],
     );
     fn sharding_factor(&self, dimensionality: &Dimensionality) -> usize;
 }
 
-pub(crate) trait Layout<C>: LayoutOps<C> {
+pub trait Layout<C>: LayoutOps<C> {
     fn shape(&self, dimensionality: &Dimensionality) -> Vec<u64>;
     fn data_type(&self) -> DataType;
     fn chunk_shape(

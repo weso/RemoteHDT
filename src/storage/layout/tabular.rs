@@ -51,9 +51,7 @@ impl Layout<Chunk> for TabularLayout {
         &self,
         _: &Dimensionality,
     ) -> StorageResult<Box<dyn ArrayToBytesCodecTraits>> {
-        let mut sharding_codec_builder = ShardingCodecBuilder::new(
-            vec![NonZeroU64::new(1).unwrap(), NonZeroU64::new(3).unwrap()].into(),
-        );
+        let mut sharding_codec_builder = ShardingCodecBuilder::new(vec![1, 3].try_into()?);
         sharding_codec_builder.bytes_to_bytes_codecs(vec![Box::new(GzipCodec::new(5)?)]);
         Ok(Box::new(sharding_codec_builder.build()))
     }
@@ -86,9 +84,7 @@ impl LayoutOps<Chunk> for TabularLayout {
     fn retrieve_chunk_elements(
         &mut self,
         matrix: &Mutex<TriMat<usize>>,
-        i: u64,
-        number_of_columns: u64,
-        first_term_idx: usize,
+        first_term_index: usize, // TODO: will first_term_index instead of chunk[0] do the trick?
         chunk: &[usize],
     ) {
         matrix

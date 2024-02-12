@@ -13,7 +13,7 @@ fn write_read_tabular_test() {
     let mut storage = Storage::new(TabularLayout, Serialization::Sparse);
 
     common::setup(
-        common::MATRIX_ZARR,
+        common::TABULAR_ZARR,
         &mut storage,
         ChunkingStrategy::Chunk,
         ReferenceSystem::SPO,
@@ -32,6 +32,7 @@ fn write_read_tabular_test() {
 #[test]
 fn write_read_matrix_test() {
     let mut storage = Storage::new(MatrixLayout, Serialization::Sparse);
+
     common::setup(
         common::MATRIX_ZARR,
         &mut storage,
