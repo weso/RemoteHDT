@@ -17,7 +17,7 @@ use crate::utils::rdf_to_value;
 
 use self::layout::Layout;
 
-mod layout;
+pub mod layout;
 pub mod matrix;
 pub mod tabular;
 
