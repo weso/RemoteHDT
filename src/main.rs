@@ -1,9 +1,9 @@
 use clap::Parser;
+use remote_hdt::storage::layout::tabular::TabularLayout;
 use remote_hdt::storage::params::Backend;
 use remote_hdt::storage::params::ChunkingStrategy;
 use remote_hdt::storage::params::ReferenceSystem;
 use remote_hdt::storage::params::Serialization;
-use remote_hdt::storage::tabular::TabularLayout;
 use remote_hdt::storage::Storage;
 use remote_hdt::storage::StorageResult;
 

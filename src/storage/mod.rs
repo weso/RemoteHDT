@@ -25,11 +25,9 @@ use self::params::Dimensionality;
 use self::params::ReferenceSystem;
 use self::params::Serialization;
 
-mod layout;
-pub mod matrix;
+pub mod layout;
 pub mod ops;
 pub mod params;
-pub mod tabular;
 
 pub type ZarrArray = CsMat<usize>;
 type AtomicZarrType = AtomicU64;

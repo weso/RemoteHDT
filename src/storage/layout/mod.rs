@@ -26,7 +26,10 @@ use super::ZarrArray;
 
 type ArrayToBytesCodec = Box<dyn ArrayToBytesCodecTraits>;
 
-pub trait LayoutOps<C> {
+pub mod matrix;
+pub mod tabular;
+
+pub(crate) trait LayoutOps<C> {
     fn retrieve_attributes(&mut self, arr: &Array<OpendalStore>) -> StorageResult<Dictionary> {
         // 4. We get the attributes so we can obtain some values that we will need
         let attributes = arr.attributes();
@@ -155,7 +158,7 @@ pub trait LayoutOps<C> {
     fn sharding_factor(&self, dimensionality: &Dimensionality) -> usize;
 }
 
-pub trait Layout<C>: LayoutOps<C> {
+pub(crate) trait Layout<C>: LayoutOps<C> {
     fn shape(&self, dimensionality: &Dimensionality) -> Vec<u64>;
     fn data_type(&self) -> DataType;
     fn chunk_shape(

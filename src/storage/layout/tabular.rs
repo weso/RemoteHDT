@@ -10,14 +10,14 @@ use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
 
-use crate::io::Graph;
-
-use super::layout::Layout;
-use super::layout::LayoutOps;
-use super::params::ChunkingStrategy;
-use super::params::Dimensionality;
-use super::params::ReferenceSystem;
+use super::ChunkingStrategy;
+use super::Dimensionality;
+use super::ReferenceSystem;
 use super::StorageResult;
+
+use crate::io::Graph;
+use crate::storage::layout::LayoutOps;
+use crate::storage::Layout;
 
 type Chunk = (u32, u32, u32);
 

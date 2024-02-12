@@ -10,15 +10,15 @@ use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
 
-use super::layout::Layout;
-use super::layout::LayoutOps;
-use super::AtomicZarrType;
 use super::ChunkingStrategy;
 use super::Dimensionality;
 use super::ReferenceSystem;
 use super::StorageResult;
 
 use crate::io::Graph;
+use crate::storage::layout::LayoutOps;
+use crate::storage::AtomicZarrType;
+use crate::storage::Layout;
 
 type Chunk = Vec<(u32, u32)>;
 

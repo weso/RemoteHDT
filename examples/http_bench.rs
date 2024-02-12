@@ -1,5 +1,5 @@
 use remote_hdt::error::RemoteHDTError;
-use remote_hdt::storage::matrix::MatrixLayout;
+use remote_hdt::storage::layout::matrix::MatrixLayout;
 use remote_hdt::storage::ops::Ops;
 use remote_hdt::storage::params::{Backend, Serialization};
 use remote_hdt::storage::Storage;

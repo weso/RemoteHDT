@@ -1,11 +1,11 @@
-use remote_hdt::storage::matrix::MatrixLayout;
+use remote_hdt::storage::layout::matrix::MatrixLayout;
+use remote_hdt::storage::layout::tabular::TabularLayout;
 use remote_hdt::storage::ops::Ops;
 use remote_hdt::storage::ops::OpsFormat;
 use remote_hdt::storage::params::Backend;
 use remote_hdt::storage::params::ChunkingStrategy;
 use remote_hdt::storage::params::ReferenceSystem;
 use remote_hdt::storage::params::Serialization;
-use remote_hdt::storage::tabular::TabularLayout;
 use remote_hdt::storage::Storage;
 use std::error::Error;
 

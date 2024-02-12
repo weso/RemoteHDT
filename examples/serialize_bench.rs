@@ -1,5 +1,5 @@
 use remote_hdt::error::RemoteHDTError;
-use remote_hdt::storage::matrix::MatrixLayout;
+use remote_hdt::storage::layout::matrix::MatrixLayout;
 use remote_hdt::storage::params::{Backend, ChunkingStrategy, ReferenceSystem, Serialization};
 use remote_hdt::storage::Storage;
 use std::env;

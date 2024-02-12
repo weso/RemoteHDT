@@ -1,6 +1,6 @@
 use remote_hdt::error::RemoteHDTError;
+use remote_hdt::storage::layout::tabular::TabularLayout;
 use remote_hdt::storage::params::{Backend, Serialization};
-use remote_hdt::storage::tabular::TabularLayout;
 use remote_hdt::storage::Storage;
 use std::env;
 use std::time::Instant;
