@@ -29,7 +29,7 @@ impl Layout<Chunk> for TabularLayout {
     }
 
     fn data_type(&self) -> DataType {
-        DataType::UInt64
+        DataType::UInt32
     }
 
     fn chunk_shape(&self, chunking_strategy: ChunkingStrategy, _: &Dimensionality) -> ChunkGrid {
@@ -37,7 +37,7 @@ impl Layout<Chunk> for TabularLayout {
     }
 
     fn fill_value(&self) -> FillValue {
-        FillValue::from(0u64)
+        FillValue::from(0u32)
     }
 
     fn dimension_names(&self, _: &ReferenceSystem) -> Option<Vec<DimensionName>> {
@@ -71,12 +71,12 @@ impl LayoutOps<Chunk> for TabularLayout {
             .collect::<Vec<Chunk>>()
     }
 
-    fn store_chunk_elements(&self, chunk: &[Chunk], _: usize) -> Vec<u64> {
+    fn store_chunk_elements(&self, chunk: &[Chunk], _: usize) -> Vec<u32> {
         let mut ans = Vec::new();
         for &(first_term, second_term, third_term) in chunk {
-            ans.push(first_term as u64);
-            ans.push(second_term as u64);
-            ans.push(third_term as u64);
+            ans.push(first_term);
+            ans.push(second_term);
+            ans.push(third_term);
         }
         ans
     }

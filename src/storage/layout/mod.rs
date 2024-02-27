@@ -71,10 +71,8 @@ pub trait LayoutOps<C> {
         let remainder = iter.remainder();
 
         for chunk in iter {
-            arr.store_chunk_elements(
-                &[count.load(Ordering::Relaxed), 0],
-                self.store_chunk_elements(chunk, columns),
-            )?;
+            let slice = self.store_chunk_elements(chunk, columns);
+            arr.store_chunk_elements(&[count.load(Ordering::Relaxed), 0], slice)?;
             count.fetch_add(1, Ordering::Relaxed);
         }
 
@@ -147,7 +145,7 @@ pub trait LayoutOps<C> {
     }
 
     fn graph_iter(&self, graph: Graph) -> Vec<C>;
-    fn store_chunk_elements(&self, chunk: &[C], columns: usize) -> Vec<u64>;
+    fn store_chunk_elements(&self, chunk: &[C], columns: usize) -> Vec<u32>;
     fn retrieve_chunk_elements(
         &mut self,
         matrix: &Mutex<TriMat<usize>>,

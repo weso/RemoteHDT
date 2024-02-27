@@ -10,7 +10,7 @@ pub type OpsResult = Result<OpsFormat, OpsError>;
 
 pub enum OpsFormat {
     SparseArray(ZarrArray),
-    Zarr(Vec<usize>),
+    Zarr(Vec<u32>),
 }
 
 pub trait Ops {

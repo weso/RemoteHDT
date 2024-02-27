@@ -33,7 +33,7 @@ impl Layout<Chunk> for MatrixLayout {
     }
 
     fn data_type(&self) -> DataType {
-        DataType::UInt64
+        DataType::UInt32
     }
 
     fn chunk_shape(
@@ -49,7 +49,7 @@ impl Layout<Chunk> for MatrixLayout {
     }
 
     fn fill_value(&self) -> FillValue {
-        FillValue::from(0u64)
+        FillValue::from(0u32)
     }
 
     fn dimension_names(&self, reference_system: &ReferenceSystem) -> Option<Vec<DimensionName>> {
@@ -97,12 +97,12 @@ impl LayoutOps<Chunk> for MatrixLayout {
         graph
     }
 
-    fn store_chunk_elements(&self, chunk: &[Chunk], columns: usize) -> Vec<u64> {
+    fn store_chunk_elements(&self, chunk: &[Chunk], columns: usize) -> Vec<u32> {
         // We create a slice that has the size of the chunk filled with 0 values
         // having the size of the shard; that is, number of rows, and a given
         // number of columns. This value is converted into an AtomicU8 for us to
         // be able to share it among threads
-        let slice: Vec<AtomicZarrType> = vec![0u64; chunk.len() * columns]
+        let slice: Vec<AtomicZarrType> = vec![0u32; chunk.len() * columns]
             .iter()
             .map(|&n| AtomicZarrType::new(n))
             .collect();
@@ -110,14 +110,14 @@ impl LayoutOps<Chunk> for MatrixLayout {
         for (first_term, triples) in chunk.iter().enumerate() {
             triples.iter().for_each(|&(second_term, third_term)| {
                 let third_term_idx = third_term as usize + first_term * columns;
-                slice[third_term_idx].store(second_term as u64, Ordering::Relaxed);
+                slice[third_term_idx].store(second_term, Ordering::Relaxed);
             });
         }
 
         slice
             .iter()
             .map(|elem| elem.load(Ordering::Relaxed))
-            .collect::<Vec<u64>>()
+            .collect::<Vec<_>>()
     }
 
     fn retrieve_chunk_elements(

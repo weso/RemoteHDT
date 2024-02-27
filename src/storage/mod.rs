@@ -2,7 +2,7 @@ use serde_json::Map;
 use sprs::CsMat;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 use zarrs::array::Array;
 use zarrs::array::ArrayBuilder;
@@ -30,7 +30,7 @@ pub mod ops;
 pub mod params;
 
 pub type ZarrArray = CsMat<usize>;
-type AtomicZarrType = AtomicU64;
+type AtomicZarrType = AtomicU32;
 pub type StorageResult<T> = Result<T, RemoteHDTError>;
 
 const ARRAY_NAME: &str = "/group/RemoteHDT"; // TODO: parameterize this

@@ -45,7 +45,7 @@ fn get_subject_matrix_sharding_test() -> Result<(), Box<dyn Error>> {
     common::setup(
         common::SHARDING_ZARR,
         &mut storage,
-        ChunkingStrategy::Sharding(3),
+        ChunkingStrategy::Sharding(4),
         ReferenceSystem::SPO,
     );
 
