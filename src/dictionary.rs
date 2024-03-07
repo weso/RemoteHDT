@@ -51,6 +51,7 @@ impl Dictionary {
             predicates: Set::new(hash_to_set(predicates)).unwrap(),
             objects: Set::new(hash_to_set(objects)).unwrap(),
         }
+        
     }
 
     pub fn subjects_size(&self) -> usize {
