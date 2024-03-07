@@ -46,7 +46,7 @@ pub enum Subject {
 }
 
 impl Subject {
-    fn get_idx(self, dictionary: &Dictionary) -> usize {
+    pub(crate) fn get_idx(self, dictionary: &Dictionary) -> usize {
         dictionary.get_subject_idx_unchecked(self.into())
     }
 }
@@ -74,7 +74,7 @@ pub enum Predicate {
 }
 
 impl Predicate {
-    fn get_idx(self, dictionary: &Dictionary) -> usize {
+    pub(crate) fn get_idx(self, dictionary: &Dictionary) -> usize {
         dictionary.get_predicate_idx_unchecked(self.into())
     }
 }
@@ -107,7 +107,7 @@ pub enum Object {
 }
 
 impl Object {
-    fn get_idx(self, dictionary: &Dictionary) -> usize {
+    pub(crate) fn get_idx(self, dictionary: &Dictionary) -> usize {
         dictionary.get_object_idx_unchecked(self.into())
     }
 }

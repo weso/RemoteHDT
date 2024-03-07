@@ -12,7 +12,7 @@ static ALLOCATOR: jemallocator::Jemalloc = jemallocator::Jemalloc;
 fn main() -> Result<(), RemoteHDTError> {
     let args: Vec<String> = env::args().collect();
     if args.len() <= 3 {
-        panic!("Usage: cargo run --example serialize_bench <rdf_path> <zarr_path> <shard_size>");
+        panic!("Usage: cargo run --example serialize <rdf_path> <zarr_path> <shard_size>");
     }
 
     let rdf_path = &args[1].as_str();

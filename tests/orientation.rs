@@ -79,49 +79,16 @@ fn orientation_pso_tabular_test() -> Result<(), Box<dyn Error>> {
         .load(Backend::FileSystem(common::TABULAR_PSO_ZARR))?
         .get_predicate(common::Predicate::InstanceOf.into())?
     {
-        OpsFormat::SparseArray(actual) => actual,
+        OpsFormat::Zarr(actual) => actual,
         _ => unreachable!(),
     };
 
-    println!("{}", storage.get_sparse_array().unwrap().to_dense());
-
-    storage
-        .get_dictionary()
-        .subjects()
-        .iter()
-        .for_each(|(i, e)| println!("{} {}", i, std::str::from_utf8(&e).unwrap().to_string()));
-
-    println!();
-
-    storage
-        .get_dictionary()
-        .predicates()
-        .iter()
-        .for_each(|(i, e)| println!("{} {}", i, std::str::from_utf8(&e).unwrap().to_string()));
-
-    println!();
-
-    storage
-        .get_dictionary()
-        .objects()
-        .iter()
-        .for_each(|(i, e)| println!("{} {}", i, std::str::from_utf8(&e).unwrap().to_string()));
-
-    println!(
-        "{:?}",
-        storage
-            .get_dictionary()
-            .get_subject_idx(common::Subject::Warrington.into())
-    );
-
-    Ok(())
-
-    // if actual == vec![3, 1, 1] {
-    //     Ok(())
-    // } else {
-    //     println!("{:?}", actual);
-    //     Err(String::from("Expected and actual results are not equals").into())
-    // }
+    if actual == vec![3, 1, 1] {
+        Ok(())
+    } else {
+        println!("{:?}", actual);
+        Err(String::from("Expected and actual results are not equals").into())
+    }
 }
 
 #[test]

@@ -85,8 +85,11 @@ impl Layout<Chunk> for MatrixLayout {
         &self,
         dimensionality: &Dimensionality,
     ) -> StorageResult<Box<dyn ArrayToBytesCodecTraits>> {
-        let mut sharding_codec_builder =
-            ShardingCodecBuilder::new(vec![1, dimensionality.get_third_term_size()].try_into()?);
+        let mut sharding_codec_builder = ShardingCodecBuilder::new(
+            vec![1, dimensionality.get_third_term_size()]
+                .as_slice()
+                .try_into()?,
+        );
         sharding_codec_builder.bytes_to_bytes_codecs(vec![Box::new(GzipCodec::new(5)?)]);
         Ok(Box::new(sharding_codec_builder.build()))
     }
@@ -124,16 +127,18 @@ impl LayoutOps<Chunk> for MatrixLayout {
         &mut self,
         matrix: &Mutex<TriMat<usize>>,
         first_term_index: usize,
-        chunk: &[usize],
+        chunk: &[u32],
     ) {
         chunk
             .iter()
             .enumerate()
             .for_each(|(third_term_idx, &second_term_idx)| {
                 if second_term_idx != 0 {
-                    matrix
-                        .lock()
-                        .add_triplet(first_term_index, third_term_idx, second_term_idx);
+                    matrix.lock().add_triplet(
+                        first_term_index,
+                        third_term_idx,
+                        second_term_idx as usize,
+                    );
                 }
             })
     }

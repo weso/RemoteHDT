@@ -104,8 +104,7 @@ impl<C> Storage<C> {
 
         // Create a group and write metadata to filesystem
         let group = GroupBuilder::new().build(store.clone(), "/group")?;
-
-        let _ = group.store_metadata()?;
+        group.store_metadata()?;
 
         // TODO: rayon::ThreadPoolBuilder::new()
         //     .num_threads(1)
@@ -153,9 +152,9 @@ impl<C> Storage<C> {
         Ok(self)
     }
 
-    pub fn load<'a>(
+    pub fn load(
         &mut self,
-        store: Backend<'a>,
+        store: Backend<'_>,
         // threading_strategy: ThreadingStrategy, TODO: implement this
     ) -> StorageResult<&mut Self> {
         let operator = match store {

@@ -38,7 +38,7 @@ pub enum ReferenceSystem {
 pub struct Dimensionality {
     graph_size: Option<usize>,
     pub(crate) first_term_size: usize,
-    second_term_size: usize,
+    _second_term_size: usize,
     pub(crate) third_term_size: usize,
 }
 
@@ -91,7 +91,7 @@ impl Dimensionality {
                 ReferenceSystem::POS | ReferenceSystem::PSO => dictionary.predicates_size(),
                 ReferenceSystem::OPS | ReferenceSystem::OSP => dictionary.objects_size(),
             },
-            second_term_size: match dictionary.get_reference_system() {
+            _second_term_size: match dictionary.get_reference_system() {
                 ReferenceSystem::PSO | ReferenceSystem::OSP => dictionary.subjects_size(),
                 ReferenceSystem::SPO | ReferenceSystem::OPS => dictionary.predicates_size(),
                 ReferenceSystem::SOP | ReferenceSystem::POS => dictionary.objects_size(),
@@ -112,9 +112,9 @@ impl Dimensionality {
         self.first_term_size as u64
     }
 
-    pub(crate) fn get_second_term_size(&self) -> u64 {
-        self.second_term_size as u64
-    }
+    // pub(crate) fn get_second_term_size(&self) -> u64 {
+    //     self._second_term_size as u64
+    // }
 
     pub(crate) fn get_third_term_size(&self) -> u64 {
         self.third_term_size as u64

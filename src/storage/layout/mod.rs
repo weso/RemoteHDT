@@ -72,12 +72,12 @@ pub trait LayoutOps<C> {
 
         for chunk in iter {
             let slice = self.store_chunk_elements(chunk, columns);
-            arr.store_chunk_elements(&[count.load(Ordering::Relaxed), 0], slice)?;
+            arr.store_chunk_elements::<u32>(&[count.load(Ordering::Relaxed), 0], slice)?;
             count.fetch_add(1, Ordering::Relaxed);
         }
 
         if !remainder.is_empty() {
-            arr.store_array_subset_elements(
+            arr.store_array_subset_elements::<u32>(
                 &ArraySubset::new_with_start_shape(
                     vec![count.load(Ordering::Relaxed) * rows_per_shard(&arr), 0],
                     vec![remainder.len() as u64, columns_per_shard(&arr)],
@@ -123,7 +123,7 @@ pub trait LayoutOps<C> {
         // of it. Once we have all the pieces processed, we will have parsed the
         // whole array
         for shard in 0..number_of_shards {
-            arr.retrieve_chunk_elements(&[shard, 0])?
+            arr.retrieve_chunk_elements::<u32>(&[shard, 0])?
                 // We divide each shard by the number of columns, as a shard is
                 // composed of chunks having the size of [1, number of cols]
                 .chunks(number_of_columns)
@@ -150,7 +150,7 @@ pub trait LayoutOps<C> {
         &mut self,
         matrix: &Mutex<TriMat<usize>>,
         first_term_idx: usize,
-        chunk: &[usize],
+        chunk: &[u32],
     );
     fn sharding_factor(&self, dimensionality: &Dimensionality) -> usize;
 }

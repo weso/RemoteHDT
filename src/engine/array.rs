@@ -13,8 +13,14 @@ impl EngineStrategy<ZarrArray> for ZarrArray {
         Ok(&matrix * self)
     }
 
-    fn get_second_term(&self, _value: usize) -> EngineResult<ZarrArray> {
-        unimplemented!()
+    fn get_second_term(&self, value: usize) -> EngineResult<ZarrArray> {
+        let mut matrix = TriMat::new((self.rows(), self.cols()));
+        self.iter().for_each(|(&e, (row, col))| {
+            if e == value {
+                matrix.add_triplet(row, col, value);
+            }
+        });
+        Ok(matrix.to_csc())
     }
 
     fn get_third_term(&self, index: usize) -> EngineResult<ZarrArray> {

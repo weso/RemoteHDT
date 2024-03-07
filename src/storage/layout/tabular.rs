@@ -84,12 +84,12 @@ impl LayoutOps<Chunk> for TabularLayout {
     fn retrieve_chunk_elements(
         &mut self,
         matrix: &Mutex<TriMat<usize>>,
-        first_term_index: usize, // TODO: will first_term_index instead of chunk[0] do the trick?
-        chunk: &[usize],
+        _first_term_index: usize, // TODO: will first_term_index instead of chunk[0] do the trick?
+        chunk: &[u32],
     ) {
         matrix
             .lock()
-            .add_triplet(chunk[0], chunk[2], chunk[1] as usize);
+            .add_triplet(chunk[0] as usize, chunk[2] as usize, chunk[1] as usize);
     }
 
     fn sharding_factor(&self, dimensionality: &Dimensionality) -> usize {
