@@ -1,3 +1,4 @@
+use common::set_expected_second_term_matrix;
 use remote_hdt::storage::layout::matrix::MatrixLayout;
 use remote_hdt::storage::layout::tabular::TabularLayout;
 use remote_hdt::storage::ops::Ops;
@@ -31,12 +32,37 @@ fn get_predicate_matrix_chunk_test() -> Result<(), Box<dyn Error>> {
         _ => unreachable!(),
     };
 
-    if actual
-        == vec![
-            0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 5, 0, 0, 0,
-        ]
-    {
+    let mut expected = vec![
+        0u32;
+        storage.get_dictionary().subjects_size()
+            * storage.get_dictionary().objects_size()
+    ];
+    set_expected_second_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::InstanceOf,
+        common::Object::Human,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+    set_expected_second_term_matrix(
+        &mut expected,
+        common::Subject::Wilmslow,
+        common::Predicate::InstanceOf,
+        common::Object::Town,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+    set_expected_second_term_matrix(
+        &mut expected,
+        common::Subject::Bombe,
+        common::Predicate::InstanceOf,
+        common::Object::Computer,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+
+    if actual == expected {
         Ok(())
     } else {
         Err(String::from("Expected and actual results are not equals").into())
@@ -62,7 +88,10 @@ fn get_predicate_tabular_test() -> Result<(), Box<dyn Error>> {
         _ => unreachable!(),
     };
 
-    let mut expected = TriMat::new((4, 9));
+    let mut expected = TriMat::new((
+        storage.get_dictionary().subjects_size(),
+        storage.get_dictionary().objects_size(),
+    ));
     expected.add_triplet(
         common::Subject::Alan.get_idx(&storage.get_dictionary()),
         common::Object::Human.get_idx(&storage.get_dictionary()),

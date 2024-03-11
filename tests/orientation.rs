@@ -1,3 +1,4 @@
+use common::set_expected_first_term_matrix;
 use remote_hdt::storage::layout::matrix::MatrixLayout;
 use remote_hdt::storage::layout::tabular::TabularLayout;
 use remote_hdt::storage::ops::Ops;
@@ -30,7 +31,33 @@ fn orientation_pso_matrix_test() -> Result<(), Box<dyn Error>> {
         _ => unreachable!(),
     };
 
-    if actual == vec![3, 0, 1] {
+    let mut expected = vec![0u32; storage.get_dictionary().objects_size()];
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::InstanceOf,
+        common::Object::Human,
+        &storage.get_dictionary(),
+        ReferenceSystem::PSO,
+    );
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Wilmslow,
+        common::Predicate::InstanceOf,
+        common::Object::Town,
+        &storage.get_dictionary(),
+        ReferenceSystem::PSO,
+    );
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Bombe,
+        common::Predicate::InstanceOf,
+        common::Object::Computer,
+        &storage.get_dictionary(),
+        ReferenceSystem::PSO,
+    );
+
+    if actual == expected {
         Ok(())
     } else {
         Err(String::from("Expected and actual results are not equals").into())
@@ -56,7 +83,17 @@ fn orientation_ops_matrix_test() -> Result<(), Box<dyn Error>> {
         _ => unreachable!(),
     };
 
-    if actual == vec![0, 3, 0, 0] {
+    let mut expected = vec![0u32; storage.get_dictionary().subjects_size()];
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Bombe,
+        common::Predicate::Discoverer,
+        common::Object::Alan,
+        &storage.get_dictionary(),
+        ReferenceSystem::OPS,
+    );
+
+    if actual == expected {
         Ok(())
     } else {
         println!("{:?}", actual);

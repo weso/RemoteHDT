@@ -77,10 +77,18 @@ pub trait LayoutOps<C> {
         }
 
         if !remainder.is_empty() {
+            // first we count the number of shards that have been processed, and
+            // multiply it by the number of chunks in every shard. Hence, we will
+            // obtain the number of rows that have been processed
+            let rows_processed = count.load(Ordering::Relaxed) * rows_per_shard(&arr);
+            // then we obtain the size of the last shard that is going to be
+            // processed; it is equals to the size of the remainder
+            let last_shard_size = remainder.len() as u64;
+            // lastly, we store the elements in the provided subset
             arr.store_array_subset_elements::<u32>(
                 &ArraySubset::new_with_start_shape(
-                    vec![count.load(Ordering::Relaxed) * rows_per_shard(&arr), 0],
-                    vec![remainder.len() as u64, columns_per_shard(&arr)],
+                    vec![rows_processed, 0],
+                    vec![last_shard_size, columns_per_shard(&arr)],
                 )?,
                 self.store_chunk_elements(remainder, columns),
             )?;

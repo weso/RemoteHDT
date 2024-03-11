@@ -1,3 +1,4 @@
+use common::set_expected_first_term_matrix;
 use remote_hdt::storage::layout::matrix::MatrixLayout;
 use remote_hdt::storage::layout::tabular::TabularLayout;
 use remote_hdt::storage::ops::Ops;
@@ -31,7 +32,49 @@ fn get_subject_matrix_chunk_test() -> Result<(), Box<dyn Error>> {
         _ => unreachable!(),
     };
 
-    if actual == vec![2, 4, 5, 0, 0, 0, 0, 7, 8] {
+    let mut expected = vec![0u32; storage.get_dictionary().objects_size()];
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::InstanceOf,
+        common::Object::Human,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::PlaceOfBirth,
+        common::Object::Warrington,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::PlaceOfDeath,
+        common::Object::Wilmslow,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::DateOfBirth,
+        common::Object::Date,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::Employer,
+        common::Object::GCHQ,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+
+    if actual == expected {
         Ok(())
     } else {
         Err(String::from("Expected and actual results are not equals").into())
@@ -57,7 +100,11 @@ fn get_subject_matrix_sharding_test() -> Result<(), Box<dyn Error>> {
         _ => unreachable!(),
     };
 
-    if actual == vec![0, 0, 0, 0, 0, 5, 1, 0, 0] {
+    let mut expected = vec![0u32; storage.get_dictionary().objects_size()];
+    expected[5] = common::Predicate::InstanceOf.get_idx(&storage.get_dictionary()) as u32;
+    expected[6] = common::Predicate::Country.get_idx(&storage.get_dictionary()) as u32;
+
+    if actual == expected {
         Ok(())
     } else {
         Err(String::from("Expected and actual results are not equals").into())
@@ -83,15 +130,37 @@ fn get_subject_tabular_test() -> Result<(), Box<dyn Error>> {
         _ => unreachable!(),
     };
 
-    let mut expected = TriMat::new((4, 9));
-    expected.add_triplet(0, 0, 2);
-    expected.add_triplet(0, 1, 4);
-    expected.add_triplet(0, 2, 5);
-    expected.add_triplet(0, 7, 7);
-    expected.add_triplet(0, 8, 8);
-    let expected = expected.to_csc();
+    let mut expected = TriMat::new((
+        storage.get_dictionary().subjects_size(),
+        storage.get_dictionary().objects_size(),
+    ));
+    expected.add_triplet(
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Object::Human.get_idx(&storage.get_dictionary()),
+        common::Predicate::InstanceOf.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Object::Warrington.get_idx(&storage.get_dictionary()),
+        common::Predicate::PlaceOfBirth.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Object::Wilmslow.get_idx(&storage.get_dictionary()),
+        common::Predicate::PlaceOfDeath.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Object::Date.get_idx(&storage.get_dictionary()),
+        common::Predicate::DateOfBirth.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Object::GCHQ.get_idx(&storage.get_dictionary()),
+        common::Predicate::Employer.get_idx(&storage.get_dictionary()),
+    );
 
-    if actual == expected {
+    if actual == expected.to_csc() {
         Ok(())
     } else {
         Err(String::from("Expected and actual results are not equals").into())

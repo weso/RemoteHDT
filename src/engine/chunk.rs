@@ -42,11 +42,7 @@ impl<T: ReadableStorageTraits + 'static> EngineStrategy<Vec<u32>> for Array<T> {
         let objects = self.shape()[0];
         let col = index as u64;
         let shape = ArraySubset::new_with_ranges(&[0..objects, col..col + 1]);
-        let array_subset = self.retrieve_array_subset(&shape).unwrap();
-        let third_term_subset = array_subset
-            .windows(4)
-            .map(|w| u32::from_ne_bytes(w.try_into().unwrap()))
-            .collect::<Vec<_>>();
-        Ok(third_term_subset)
+        let array_subset = self.retrieve_array_subset_elements::<u32>(&shape)?;
+        Ok(array_subset)
     }
 }
