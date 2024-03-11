@@ -6,7 +6,7 @@ use remote_hdt::storage::Storage;
 use std::env;
 use std::time::Instant;
 
-const SUBJECT: &str = "<http://www.Department0.University0.edu/AssistantProfessor0/Publication0>";
+const SUBJECT: &str = "<http://www.Department1.University0.edu/Course8>";
 
 fn main() -> Result<(), RemoteHDTError> {
     let args: Vec<String> = env::args().collect();
@@ -21,7 +21,7 @@ fn main() -> Result<(), RemoteHDTError> {
     let arr = binding.load(Backend::FileSystem(format!("{}.zarr", zarr_path).as_str()))?;
 
     let before = Instant::now();
-    arr.get_subject(SUBJECT)?;
+    arr.get_object(SUBJECT)?;
 
     println!("Elapsed time: {:.2?}", before.elapsed());
 

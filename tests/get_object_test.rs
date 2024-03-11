@@ -20,7 +20,7 @@ fn get_object_matrix_sharding_test() -> Result<(), Box<dyn Error>> {
     common::setup(
         common::SHARDING_ZARR,
         &mut storage,
-        ChunkingStrategy::Sharding(4),
+        ChunkingStrategy::Sharding(3),
         ReferenceSystem::SPO,
     );
 

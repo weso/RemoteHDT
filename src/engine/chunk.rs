@@ -9,7 +9,7 @@ use crate::utils::rows_per_shard;
 use super::EngineResult;
 use super::EngineStrategy;
 
-impl<T: ReadableStorageTraits + 'static> EngineStrategy<Vec<u32>> for Array<T> {
+impl<T: ReadableStorageTraits + 'static + ?Sized> EngineStrategy<Vec<u32>> for Array<T> {
     fn get_first_term(&self, index: usize) -> EngineResult<Vec<u32>> {
         let shard_index = index as u64 / rows_per_shard(self);
         let shard = self.retrieve_chunk_elements(&[shard_index, 0])?;

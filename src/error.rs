@@ -52,8 +52,6 @@ pub enum RemoteHDTError {
     TripleSerialization,
     #[error("The provided path is not valid")]
     OsPathToString,
-    #[error(transparent)]
-    Opendal(#[from] zarrs::opendal::Error),
     #[error("The provided backend is read-only")]
     ReadOnlyBackend,
     #[error("Error while parsing the RDF graph")]

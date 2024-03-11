@@ -6,11 +6,11 @@ use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 use zarrs::array::Array;
 use zarrs::array::ArrayBuilder;
+use zarrs::array_subset::ArraySubset;
 use zarrs::group::GroupBuilder;
-use zarrs::opendal::services::Fs;
-use zarrs::opendal::services::Http;
-use zarrs::opendal::Operator;
-use zarrs::storage::store::OpendalStore;
+use zarrs::storage::store::FilesystemStore;
+use zarrs::storage::store::HTTPStore;
+use zarrs::storage::ReadableStorageTraits;
 
 use crate::dictionary::Dictionary;
 use crate::error::RemoteHDTError;
@@ -41,7 +41,7 @@ pub struct Storage<C> {
     layout: Box<dyn Layout<C>>,
     serialization: Serialization,
     reference_system: ReferenceSystem,
-    array: Option<Array<OpendalStore>>,
+    array: Option<Array<dyn ReadableStorageTraits>>,
     sparse_array: Option<ZarrArray>,
 }
 
@@ -78,29 +78,20 @@ impl<C> Storage<C> {
         reference_system: ReferenceSystem,
         // threading_strategy: ThreadingStrategy, TODO: implement this
     ) -> StorageResult<&mut Self> {
-        let operator = match store {
+        let path = match store {
             Backend::FileSystem(path) => {
-                let mut builder = Fs::default();
                 let path = PathBuf::from_str(path)?;
 
                 match path.exists() {
                     true => return Err(RemoteHDTError::PathExists),
-                    false => {
-                        let path = match path.into_os_string().into_string() {
-                            Ok(string) => string,
-                            Err(_) => return Err(RemoteHDTError::OsPathToString),
-                        };
-                        builder.root(&path);
-                    }
+                    false => path,
                 }
-
-                Operator::new(builder)?.finish()
             }
             Backend::HTTP(_) => return Err(RemoteHDTError::ReadOnlyBackend),
         };
 
         // 2. We can create the FileSystemStore appropiately
-        let store = Arc::new(OpendalStore::new(operator.blocking()));
+        let store = Arc::new(FilesystemStore::new(path)?);
 
         // Create a group and write metadata to filesystem
         let group = GroupBuilder::new().build(store.clone(), "/group")?;
@@ -144,10 +135,13 @@ impl<C> Storage<C> {
             attributes.insert("reference_system".into(), reference_system.as_ref().into());
             attributes
         })
-        .build(store, ARRAY_NAME)?;
+        .build(store.clone(), ARRAY_NAME)?;
 
         arr.store_metadata()?;
-        self.layout.serialize(arr, graph)?;
+        self.layout.serialize(&arr, graph)?;
+
+        let shape = ArraySubset::new_with_ranges(&[0..10, 1..2]);
+        arr.retrieve_array_subset_elements::<u32>(&shape).unwrap();
 
         Ok(self)
     }
@@ -157,32 +151,18 @@ impl<C> Storage<C> {
         store: Backend<'_>,
         // threading_strategy: ThreadingStrategy, TODO: implement this
     ) -> StorageResult<&mut Self> {
-        let operator = match store {
+        let store: Arc<dyn ReadableStorageTraits> = match store {
             Backend::FileSystem(path) => {
-                let mut builder = Fs::default();
                 let path = PathBuf::from_str(path)?;
 
                 match path.exists() {
                     false => return Err(RemoteHDTError::PathDoesNotExist),
-                    true => {
-                        let path = match path.into_os_string().into_string() {
-                            Ok(string) => string,
-                            Err(_) => return Err(RemoteHDTError::OsPathToString),
-                        };
-                        builder.root(&path);
-                    }
+                    true => Arc::new(FilesystemStore::new(path)?),
                 }
-
-                Operator::new(builder)?.finish()
             }
-            Backend::HTTP(path) => {
-                let mut builder = Http::default();
-                builder.endpoint(path);
-                Operator::new(builder)?.finish()
-            }
+            Backend::HTTP(url) => Arc::new(HTTPStore::new(url)?),
         };
 
-        let store: Arc<OpendalStore> = Arc::new(OpendalStore::new(operator.blocking()));
         let arr = Array::new(store, ARRAY_NAME)?;
         let dictionary = self.layout.retrieve_attributes(&arr)?;
         self.dictionary = dictionary;

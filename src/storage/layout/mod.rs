@@ -9,7 +9,8 @@ use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
 use zarrs::array_subset::ArraySubset;
-use zarrs::storage::store::OpendalStore;
+use zarrs::storage::store::FilesystemStore;
+use zarrs::storage::ReadableStorageTraits;
 
 use crate::dictionary::Dictionary;
 use crate::error::RemoteHDTError;
@@ -30,7 +31,10 @@ pub mod matrix;
 pub mod tabular;
 
 pub trait LayoutOps<C> {
-    fn retrieve_attributes(&mut self, arr: &Array<OpendalStore>) -> StorageResult<Dictionary> {
+    fn retrieve_attributes(
+        &mut self,
+        arr: &Array<dyn ReadableStorageTraits>,
+    ) -> StorageResult<Dictionary> {
         // 4. We get the attributes so we can obtain some values that we will need
         let attributes = arr.attributes();
 
@@ -63,7 +67,7 @@ pub trait LayoutOps<C> {
         ))
     }
 
-    fn serialize(&mut self, arr: Array<OpendalStore>, graph: Graph) -> StorageResult<()> {
+    fn serialize(&mut self, arr: &Array<FilesystemStore>, graph: Graph) -> StorageResult<()> {
         let columns = arr.shape()[1] as usize;
         let count = AtomicU64::new(0);
         let binding = self.graph_iter(graph.to_owned());
@@ -99,7 +103,7 @@ pub trait LayoutOps<C> {
 
     fn parse(
         &mut self,
-        arr: &Array<OpendalStore>,
+        arr: &Array<dyn ReadableStorageTraits>,
         dimensionality: &Dimensionality,
     ) -> StorageResult<ZarrArray> {
         // First, we create the 2D matrix in such a manner that the number of

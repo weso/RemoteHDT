@@ -39,7 +39,9 @@ impl<C> Ops for Storage<C> {
                 Some(array) => OpsFormat::SparseArray(match self.reference_system {
                     ReferenceSystem::SPO | ReferenceSystem::SOP => array.get_first_term(index)?,
                     ReferenceSystem::PSO | ReferenceSystem::OSP => array.get_second_term(index)?,
-                    ReferenceSystem::POS | ReferenceSystem::OPS => array.get_third_term(index)?,
+                    ReferenceSystem::POS | ReferenceSystem::OPS => {
+                        array.get_third_term(index).unwrap()
+                    }
                 }),
                 None => return Err(OpsError::EmptySparseArray),
             },

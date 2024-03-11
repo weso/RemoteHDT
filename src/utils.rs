@@ -31,7 +31,7 @@ pub fn hash_to_set(terms: HashSet<String>) -> Vec<String> {
     vec
 }
 
-pub fn rows_per_shard<T>(arr: &Array<T>) -> u64 {
+pub fn rows_per_shard<T: ?Sized>(arr: &Array<T>) -> u64 {
     match arr.chunk_grid().chunk_shape(&[0, 0], arr.shape()) {
         Ok(shape) => match shape {
             Some(chunk_shape) => chunk_shape[0].into(),
@@ -41,7 +41,7 @@ pub fn rows_per_shard<T>(arr: &Array<T>) -> u64 {
     }
 }
 
-pub fn columns_per_shard<T>(arr: &Array<T>) -> u64 {
+pub fn columns_per_shard<T: ?Sized>(arr: &Array<T>) -> u64 {
     match arr.chunk_grid().chunk_shape(&[0, 0], arr.shape()) {
         Ok(shape) => match shape {
             Some(chunk_shape) => chunk_shape[1].into(),

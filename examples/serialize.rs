@@ -5,10 +5,6 @@ use remote_hdt::storage::Storage;
 use std::env;
 use std::time::Instant;
 
-#[cfg(not(target_env = "msvc"))]
-#[global_allocator]
-static ALLOCATOR: jemallocator::Jemalloc = jemallocator::Jemalloc;
-
 fn main() -> Result<(), RemoteHDTError> {
     let args: Vec<String> = env::args().collect();
     if args.len() <= 3 {

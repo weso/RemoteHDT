@@ -8,6 +8,7 @@ use remote_hdt::storage::params::ChunkingStrategy;
 use remote_hdt::storage::params::ReferenceSystem;
 use remote_hdt::storage::params::Serialization;
 use remote_hdt::storage::Storage;
+use sprs::TriMat;
 use std::error::Error;
 
 mod common;
@@ -116,11 +117,31 @@ fn orientation_pso_tabular_test() -> Result<(), Box<dyn Error>> {
         .load(Backend::FileSystem(common::TABULAR_PSO_ZARR))?
         .get_predicate(common::Predicate::InstanceOf.into())?
     {
-        OpsFormat::Zarr(actual) => actual,
+        OpsFormat::SparseArray(actual) => actual,
         _ => unreachable!(),
     };
 
-    if actual == vec![3, 1, 1] {
+    let mut expected = TriMat::new((
+        storage.get_dictionary().predicates_size(),
+        storage.get_dictionary().objects_size(),
+    ));
+    expected.add_triplet(
+        common::Predicate::InstanceOf.get_idx(&storage.get_dictionary()),
+        common::Object::Human.get_idx(&storage.get_dictionary()),
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Predicate::InstanceOf.get_idx(&storage.get_dictionary()),
+        common::Object::Town.get_idx(&storage.get_dictionary()),
+        common::Subject::Wilmslow.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Predicate::InstanceOf.get_idx(&storage.get_dictionary()),
+        common::Object::Computer.get_idx(&storage.get_dictionary()),
+        common::Subject::Bombe.get_idx(&storage.get_dictionary()),
+    );
+
+    if actual == expected.to_csc() {
         Ok(())
     } else {
         println!("{:?}", actual);
@@ -130,7 +151,7 @@ fn orientation_pso_tabular_test() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn orientation_ops_tabular_test() -> Result<(), Box<dyn Error>> {
-    let mut storage = Storage::new(TabularLayout, Serialization::Zarr);
+    let mut storage = Storage::new(TabularLayout, Serialization::Sparse);
 
     common::setup(
         common::TABULAR_OPS_ZARR,
@@ -143,11 +164,41 @@ fn orientation_ops_tabular_test() -> Result<(), Box<dyn Error>> {
         .load(Backend::FileSystem(common::TABULAR_OPS_ZARR))?
         .get_subject(common::Subject::Alan.into())?
     {
-        OpsFormat::Zarr(actual) => actual,
+        OpsFormat::SparseArray(actual) => actual,
         _ => unreachable!(),
     };
 
-    if actual == vec![1, 3, 4, 0, 0, 0, 0, 6, 7] {
+    let mut expected = TriMat::new((
+        storage.get_dictionary().objects_size(),
+        storage.get_dictionary().subjects_size(),
+    ));
+    expected.add_triplet(
+        common::Object::Human.get_idx(&storage.get_dictionary()),
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Predicate::InstanceOf.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Object::Warrington.get_idx(&storage.get_dictionary()),
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Predicate::PlaceOfBirth.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Object::Wilmslow.get_idx(&storage.get_dictionary()),
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Predicate::PlaceOfDeath.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Object::Date.get_idx(&storage.get_dictionary()),
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Predicate::DateOfBirth.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Object::GCHQ.get_idx(&storage.get_dictionary()),
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Predicate::Employer.get_idx(&storage.get_dictionary()),
+    );
+
+    if actual == expected.to_csc() {
         Ok(())
     } else {
         Err(String::from("Expected and actual results are not equals").into())
