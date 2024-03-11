@@ -71,7 +71,7 @@ pub trait LayoutOps<C> {
         let columns = arr.shape()[1] as usize;
         let count = AtomicU64::new(0);
         let binding = self.graph_iter(graph.to_owned());
-        let iter = binding.chunks_exact(rows_per_shard(&arr) as usize);
+        let iter = binding.chunks_exact(rows_per_shard(arr) as usize);
         let remainder = iter.remainder();
 
         for chunk in iter {
@@ -84,7 +84,7 @@ pub trait LayoutOps<C> {
             // first we count the number of shards that have been processed, and
             // multiply it by the number of chunks in every shard. Hence, we will
             // obtain the number of rows that have been processed
-            let rows_processed = count.load(Ordering::Relaxed) * rows_per_shard(&arr);
+            let rows_processed = count.load(Ordering::Relaxed) * rows_per_shard(arr);
             // then we obtain the size of the last shard that is going to be
             // processed; it is equals to the size of the remainder
             let last_shard_size = remainder.len() as u64;
@@ -92,7 +92,7 @@ pub trait LayoutOps<C> {
             arr.store_array_subset_elements::<u32>(
                 &ArraySubset::new_with_start_shape(
                     vec![rows_processed, 0],
-                    vec![last_shard_size, columns_per_shard(&arr)],
+                    vec![last_shard_size, columns_per_shard(arr)],
                 )?,
                 self.store_chunk_elements(remainder, columns),
             )?;
