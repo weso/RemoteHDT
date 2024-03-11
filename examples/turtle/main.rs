@@ -1,13 +1,15 @@
-use remote_hdt::storage::tabular::TabularLayout;
-use remote_hdt::storage::ChunkingStrategy;
-use remote_hdt::storage::LocalStorage;
+use remote_hdt::error::RemoteHDTError;
+use remote_hdt::storage::layout::tabular::TabularLayout;
+use remote_hdt::storage::params::{Backend, ChunkingStrategy, ReferenceSystem, Serialization};
+use remote_hdt::storage::Storage;
 
-pub fn main() {
-    LocalStorage::new(TabularLayout)
-        .serialize(
-            "root.zarr",
-            "examples/turtle/rdf.ttk",
-            ChunkingStrategy::Chunk,
-        )
-        .unwrap();
+pub fn main() -> Result<(), RemoteHDTError> {
+    Storage::new(TabularLayout, Serialization::Zarr).serialize(
+        Backend::FileSystem("root.zarr"),
+        "examples/turtle/rdf.ttl",
+        ChunkingStrategy::Chunk,
+        ReferenceSystem::SPO,
+    )?;
+
+    Ok(())
 }

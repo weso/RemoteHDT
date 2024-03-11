@@ -1,93 +1,94 @@
-use safe_transmute::TriviallyTransmutable;
 use serde_json::Map;
 use sprs::CsMat;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 use zarrs::array::Array;
 use zarrs::array::ArrayBuilder;
+use zarrs::array_subset::ArraySubset;
 use zarrs::group::GroupBuilder;
 use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::store::HTTPStore;
+use zarrs::storage::ReadableStorageTraits;
 
 use crate::dictionary::Dictionary;
 use crate::error::RemoteHDTError;
+use crate::io::Graph;
 use crate::io::RdfParser;
 use crate::utils::rdf_to_value;
 
 use self::layout::Layout;
+use self::params::Backend;
+use self::params::ChunkingStrategy;
+use self::params::Dimensionality;
+use self::params::ReferenceSystem;
+use self::params::Serialization;
 
-mod layout;
-pub mod matrix;
-pub mod tabular;
+pub mod layout;
+pub mod ops;
+pub mod params;
 
-pub type ZarrArray = CsMat<u8>;
+pub type ZarrArray = CsMat<usize>;
+type AtomicZarrType = AtomicU32;
 pub type StorageResult<T> = Result<T, RemoteHDTError>;
-pub type LocalStorage<T, C> = Storage<FilesystemStore, T, C>;
-pub type HTTPStorage<T, C> = Storage<HTTPStore, T, C>;
 
-const ARRAY_NAME: &str = "/group/RemoteHDT";
+const ARRAY_NAME: &str = "/group/RemoteHDT"; // TODO: parameterize this
 
-pub enum ChunkingStrategy {
-    Chunk,
-    Sharding(u64),
-    Best,
-}
-
-pub enum ThreadingStrategy {
-    Single,
-    Multi,
-}
-
-impl From<ChunkingStrategy> for u64 {
-    fn from(value: ChunkingStrategy) -> Self {
-        match value {
-            ChunkingStrategy::Chunk => 1,
-            ChunkingStrategy::Sharding(size) => size,
-            ChunkingStrategy::Best => 16, // TODO: set to the number of threads
-        }
-    }
-}
-
-pub struct Storage<R, T, C> {
+pub struct Storage<C> {
     dictionary: Dictionary,
-    layout: Box<dyn Layout<R, T, C>>,
+    dimensionality: Dimensionality,
+    layout: Box<dyn Layout<C>>,
+    serialization: Serialization,
+    reference_system: ReferenceSystem,
+    array: Option<Array<dyn ReadableStorageTraits>>,
+    sparse_array: Option<ZarrArray>,
 }
 
-impl<R, T: TriviallyTransmutable, C> Storage<R, T, C> {
-    pub fn new(layout: impl Layout<R, T, C> + 'static) -> Self {
+impl<C> Storage<C> {
+    pub fn new(layout: impl Layout<C> + 'static, serialization: Serialization) -> Self {
         Storage {
             dictionary: Default::default(),
+            dimensionality: Default::default(),
             layout: Box::new(layout),
+            serialization,
+            reference_system: ReferenceSystem::SPO,
+            array: None,
+            sparse_array: None,
         }
     }
 
     pub fn get_dictionary(&self) -> Dictionary {
         self.dictionary.to_owned()
     }
-}
 
-impl<T: TriviallyTransmutable, C> LocalStorage<T, C> {
+    pub fn get_sparse_array(&self) -> Option<ZarrArray> {
+        self.sparse_array.to_owned()
+    }
+
     /// # Errors
     /// Returns [`PathExistsError`] if the provided path already exists; that is,
     /// the user is trying to store the RDF dataset in an occupied storage. This
     /// is due to the fact that the user may incur in an undefined state.
     pub fn serialize<'a>(
         &mut self,
-        zarr_path: &'a str,
+        store: Backend<'a>,
         rdf_path: &'a str,
         chunking_strategy: ChunkingStrategy,
-        // threading_strategy: ThreadingStrategy,
-    ) -> StorageResult<&Self> {
-        // 1. The first thing that should be done is to check whether the path
-        // in which we are trying to store the dump already exists or not. If it
-        // does, we should stop the execution, preventing the user from losing
-        // data. Otherwise we can resume it and begin the actual proccess...
-        let path = PathBuf::from_str(zarr_path)?;
-        if path.exists() {
-            // the actual check occurs here !!!
-            return Err(RemoteHDTError::PathExists);
-        }
+        reference_system: ReferenceSystem,
+        // threading_strategy: ThreadingStrategy, TODO: implement this
+    ) -> StorageResult<&mut Self> {
+        let path = match store {
+            Backend::FileSystem(path) => {
+                let path = PathBuf::from_str(path)?;
+
+                match path.exists() {
+                    true => return Err(RemoteHDTError::PathExists),
+                    false => path,
+                }
+            }
+            Backend::HTTP(_) => return Err(RemoteHDTError::ReadOnlyBackend),
+        };
 
         // 2. We can create the FileSystemStore appropiately
         let store = Arc::new(FilesystemStore::new(path)?);
@@ -96,18 +97,19 @@ impl<T: TriviallyTransmutable, C> LocalStorage<T, C> {
         let group = GroupBuilder::new().build(store.clone(), "/group")?;
         group.store_metadata()?;
 
-        // rayon::ThreadPoolBuilder::new()
+        // TODO: rayon::ThreadPoolBuilder::new()
         //     .num_threads(1)
         //     .build_global()
         //     .unwrap();
 
         // 3. Import the RDF dump using `rdf-rs`
-        let graph = match RdfParser::parse(rdf_path) {
+        let graph = match RdfParser::parse(rdf_path, &reference_system) {
             Ok((graph, dictionary)) => {
                 self.dictionary = dictionary;
+                self.dimensionality = Dimensionality::new(&self.dictionary, &graph);
                 graph
             }
-            Err(_) => todo!(),
+            Err(_) => return Err(RemoteHDTError::RdfParse),
         };
 
         // 4. Build the structure of the Array; as such, several parameters of it are
@@ -117,54 +119,63 @@ impl<T: TriviallyTransmutable, C> LocalStorage<T, C> {
         let predicates = self.dictionary.predicates();
         let objects = self.dictionary.objects();
         let arr = ArrayBuilder::new(
-            self.layout.shape(&self.dictionary, &graph),
+            self.layout.shape(&self.dimensionality),
             self.layout.data_type(),
-            self.layout.chunk_shape(chunking_strategy, &self.dictionary),
+            self.layout
+                .chunk_shape(chunking_strategy, &self.dimensionality),
             self.layout.fill_value(),
         )
-        .dimension_names(self.layout.dimension_names())
-        .array_to_bytes_codec(self.layout.array_to_bytes_codec(&self.dictionary)?)
+        .dimension_names(self.layout.dimension_names(&reference_system))
+        .array_to_bytes_codec(self.layout.array_to_bytes_codec(&self.dimensionality)?)
         .attributes({
             let mut attributes = Map::new();
             attributes.insert("subjects".into(), rdf_to_value(subjects));
             attributes.insert("predicates".into(), rdf_to_value(predicates));
             attributes.insert("objects".into(), rdf_to_value(objects));
+            attributes.insert("reference_system".into(), reference_system.as_ref().into());
             attributes
-        }) // TODO: one attribute should be the Layout
-        .build(store, ARRAY_NAME)?;
+        })
+        .build(store.clone(), ARRAY_NAME)?;
 
         arr.store_metadata()?;
+        self.layout.serialize(&arr, graph)?;
 
-        self.layout.serialize(arr, graph)?;
+        let shape = ArraySubset::new_with_ranges(&[0..10, 1..2]);
+        arr.retrieve_array_subset_elements::<u32>(&shape).unwrap();
 
         Ok(self)
     }
 
-    pub fn load(&mut self, zarr_path: &str) -> StorageResult<Array<FilesystemStore>> {
-        let store = Arc::new(FilesystemStore::new(zarr_path)?);
+    pub fn load(
+        &mut self,
+        store: Backend<'_>,
+        // threading_strategy: ThreadingStrategy, TODO: implement this
+    ) -> StorageResult<&mut Self> {
+        let store: Arc<dyn ReadableStorageTraits> = match store {
+            Backend::FileSystem(path) => {
+                let path = PathBuf::from_str(path)?;
+
+                match path.exists() {
+                    false => return Err(RemoteHDTError::PathDoesNotExist),
+                    true => Arc::new(FilesystemStore::new(path)?),
+                }
+            }
+            Backend::HTTP(url) => Arc::new(HTTPStore::new(url)?),
+        };
+
         let arr = Array::new(store, ARRAY_NAME)?;
-        self.dictionary = self.layout.retrieve_attributes(&arr);
-        Ok(arr)
-    }
+        let dictionary = self.layout.retrieve_attributes(&arr)?;
+        self.dictionary = dictionary;
+        self.reference_system = self.dictionary.get_reference_system();
+        self.dimensionality = Dimensionality::new(&self.dictionary, &Graph::default());
 
-    // TODO: improve this naming convention
-    pub fn load_sparse(&mut self, zarr_path: &str) -> StorageResult<ZarrArray> {
-        let arr = self.load(zarr_path)?;
-        self.layout.parse(arr, &self.dictionary)
-    }
-}
+        match self.serialization {
+            Serialization::Zarr => self.array = Some(arr),
+            Serialization::Sparse => {
+                self.sparse_array = Some(self.layout.parse(&arr, &self.dimensionality)?)
+            }
+        }
 
-impl<T: TriviallyTransmutable, C> HTTPStorage<T, C> {
-    pub fn connect(&mut self, url: &str) -> StorageResult<Array<HTTPStore>> {
-        let store = Arc::new(HTTPStore::new(url)?);
-        let arr = Array::new(store, ARRAY_NAME)?;
-        self.dictionary = self.layout.retrieve_attributes(&arr);
-        Ok(arr)
-    }
-
-    // TODO: improve this naming convention
-    pub fn connect_sparse(&mut self, url: &str) -> StorageResult<ZarrArray> {
-        let arr = self.connect(url)?;
-        self.layout.parse(arr, &self.dictionary)
+        Ok(self)
     }
 }

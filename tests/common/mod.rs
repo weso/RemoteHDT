@@ -1,31 +1,40 @@
 #![allow(dead_code)]
 
-use safe_transmute::TriviallyTransmutable;
-use sprs::{CsMat, TriMat};
+use remote_hdt::dictionary::Dictionary;
+use remote_hdt::storage::params::Backend;
+use remote_hdt::storage::params::ChunkingStrategy;
+use remote_hdt::storage::params::ReferenceSystem;
+use remote_hdt::storage::Storage;
+use sprs::CsMat;
+use sprs::TriMat;
 use std::fs::File;
-use zarrs::storage::store::FilesystemStore;
-
-use remote_hdt::{
-    dictionary::Dictionary,
-    storage::{ChunkingStrategy, Storage},
-};
 
 pub const TABULAR_ZARR: &str = "tests/out/tabular.zarr";
 pub const MATRIX_ZARR: &str = "tests/out/matrix.zarr";
 pub const SHARDING_ZARR: &str = "tests/out/sharding.zarr";
 pub const LARGER_ZARR: &str = "tests/out/larger.zarr";
+pub const PSO_ZARR: &str = "tests/out/pso.zarr";
+pub const OPS_ZARR: &str = "tests/out/ops.zarr";
+pub const TABULAR_PSO_ZARR: &str = "tests/out/tabular_pso.zarr";
+pub const TABULAR_OPS_ZARR: &str = "tests/out/tabular_ops.zarr";
 
-pub fn setup<T: TriviallyTransmutable, C>(
+pub fn setup<C>(
     path: &str,
-    storage: &mut Storage<FilesystemStore, T, C>,
+    storage: &mut Storage<C>,
     chunking_strategy: ChunkingStrategy,
+    reference_system: ReferenceSystem,
 ) {
     if File::open(path).is_err() {
         storage
-            .serialize(path, "resources/rdf.nt", chunking_strategy)
+            .serialize(
+                Backend::FileSystem(path),
+                "resources/rdf.nt",
+                chunking_strategy,
+                reference_system,
+            )
             .unwrap();
     } else {
-        storage.load(path).unwrap();
+        storage.load(Backend::FileSystem(path)).unwrap();
     }
 }
 
@@ -65,8 +74,8 @@ pub enum Predicate {
 }
 
 impl Predicate {
-    pub fn get_idx(self, dictionary: &Dictionary) -> u8 {
-        dictionary.get_predicate_idx_unchecked(self.into()) as u8
+    pub(crate) fn get_idx(self, dictionary: &Dictionary) -> usize {
+        dictionary.get_predicate_idx_unchecked(self.into())
     }
 }
 
@@ -98,7 +107,7 @@ pub enum Object {
 }
 
 impl Object {
-    pub fn get_idx(self, dictionary: &Dictionary) -> usize {
+    pub(crate) fn get_idx(self, dictionary: &Dictionary) -> usize {
         dictionary.get_object_idx_unchecked(self.into())
     }
 }
@@ -122,7 +131,7 @@ impl From<Object> for &str {
 pub struct Graph;
 
 impl Graph {
-    pub fn new(dictionary: &Dictionary) -> CsMat<u8> {
+    pub fn new(dictionary: &Dictionary) -> CsMat<usize> {
         let mut ans = TriMat::new((4, 9));
 
         ans.add_triplet(
@@ -181,5 +190,83 @@ impl Graph {
             Predicate::Manufacturer.get_idx(dictionary),
         );
         ans.to_csc()
+    }
+}
+
+pub fn set_expected_first_term_matrix(
+    expected: &mut Vec<u32>,
+    subject: Subject,
+    predicate: Predicate,
+    object: Object,
+    dictionary: &Dictionary,
+    reference_system: ReferenceSystem,
+) {
+    let subject_idx = subject.get_idx(dictionary);
+    let predicate_idx = predicate.get_idx(dictionary);
+    let object_idx = object.get_idx(dictionary);
+
+    match reference_system {
+        ReferenceSystem::SPO => expected[object_idx] = predicate_idx as u32,
+        ReferenceSystem::SOP => expected[predicate_idx] = object_idx as u32,
+        ReferenceSystem::PSO => expected[object_idx] = subject_idx as u32,
+        ReferenceSystem::POS => expected[subject_idx] = object_idx as u32,
+        ReferenceSystem::OSP => expected[predicate_idx] = subject_idx as u32,
+        ReferenceSystem::OPS => expected[subject_idx] = predicate_idx as u32,
+    }
+}
+
+pub fn set_expected_second_term_matrix(
+    expected: &mut Vec<u32>,
+    subject: Subject,
+    predicate: Predicate,
+    object: Object,
+    dictionary: &Dictionary,
+    reference_system: ReferenceSystem,
+) {
+    let subject_idx = subject.get_idx(dictionary);
+    let predicate_idx = predicate.get_idx(dictionary);
+    let object_idx = object.get_idx(dictionary);
+
+    match reference_system {
+        ReferenceSystem::SPO => {
+            expected[subject_idx * dictionary.objects_size() + object_idx] = predicate_idx as u32
+        }
+        ReferenceSystem::SOP => {
+            expected[subject_idx * dictionary.predicates_size() + predicate_idx] = object_idx as u32
+        }
+        ReferenceSystem::PSO => {
+            expected[predicate_idx * dictionary.objects_size() + object_idx] = subject_idx as u32
+        }
+        ReferenceSystem::POS => {
+            expected[predicate_idx * dictionary.subjects_size() + subject_idx] = object_idx as u32
+        }
+        ReferenceSystem::OSP => {
+            expected[object_idx * dictionary.predicates_size() + predicate_idx] = subject_idx as u32
+        }
+        ReferenceSystem::OPS => {
+            expected[object_idx * dictionary.subjects_size() + subject_idx] = predicate_idx as u32
+        }
+    }
+}
+
+pub fn set_expected_third_term_matrix(
+    expected: &mut Vec<u32>,
+    subject: Subject,
+    predicate: Predicate,
+    object: Object,
+    dictionary: &Dictionary,
+    reference_system: ReferenceSystem,
+) {
+    let subject_idx = subject.get_idx(dictionary);
+    let predicate_idx = predicate.get_idx(dictionary);
+    let object_idx = object.get_idx(dictionary);
+
+    match reference_system {
+        ReferenceSystem::SPO => expected[subject_idx] = predicate_idx as u32,
+        ReferenceSystem::SOP => expected[subject_idx] = object_idx as u32,
+        ReferenceSystem::PSO => expected[predicate_idx] = subject_idx as u32,
+        ReferenceSystem::POS => expected[predicate_idx] = object_idx as u32,
+        ReferenceSystem::OSP => expected[object_idx] = subject_idx as u32,
+        ReferenceSystem::OPS => expected[object_idx] = predicate_idx as u32,
     }
 }

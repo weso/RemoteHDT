@@ -1,20 +1,20 @@
-use remote_hdt::engine::EngineStrategy;
-use remote_hdt::storage::matrix::MatrixLayout;
-use remote_hdt::storage::HTTPStorage;
+use remote_hdt::error::RemoteHDTError;
+use remote_hdt::storage::layout::matrix::MatrixLayout;
+use remote_hdt::storage::ops::Ops;
+use remote_hdt::storage::params::{Backend, Serialization};
+use remote_hdt::storage::Storage;
 use std::time::Instant;
 
-fn main() {
-    let mut remote_hdt = HTTPStorage::new(MatrixLayout);
-    let arr = remote_hdt
-        .connect("https://raw.githubusercontent.com/weso/RemoteHDT/master/resources/root.zarr")
-        .unwrap();
-    let index = remote_hdt
-        .get_dictionary()
-        .get_subject_idx_unchecked("<http://example.org/alan>");
+fn main() -> Result<(), RemoteHDTError> {
+    let mut binding = Storage::new(MatrixLayout, Serialization::Zarr);
+    let arr = binding.load(Backend::HTTP(
+        "https://raw.githubusercontent.com/weso/RemoteHDT/master/resources/root.zarr",
+    ))?;
 
     let before = Instant::now();
-    arr.get_subject(index).unwrap();
-    let after = before.elapsed();
+    arr.get_subject("<http://example.org/alan>")?;
 
-    println!("Elapsed time: {:.2?}", after)
+    println!("Elapsed time: {:.2?}", before.elapsed());
+
+    Ok(())
 }

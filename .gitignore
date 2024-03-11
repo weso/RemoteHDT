@@ -6,3 +6,4 @@ benches/*/*.nt
 .vscode
 heaptrack.*
 tests/out
+uniprotkb_*

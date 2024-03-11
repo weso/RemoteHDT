@@ -6,6 +6,7 @@ use std::io::BufReader;
 
 use crate::dictionary::Dictionary;
 use crate::error::ParserError;
+use crate::storage::params::ReferenceSystem;
 
 use self::ntriples::NTriples;
 use self::rdf_xml::RdfXml;
@@ -19,7 +20,7 @@ pub type RdfParserResult = Result<(Graph, Dictionary), ParserError>;
 pub type Graph = Vec<Vec<(u32, u32)>>;
 
 trait Backend<T: TriplesParser, E: From<<T>::Error>> {
-    fn parse(path: &str) -> RdfParserResult {
+    fn parse(path: &str, reference_system: &ReferenceSystem) -> RdfParserResult {
         // We create as many HashSets as fields we will be storing; that is, one
         // for the subjects, another for the predicates, and one for the objects.
         // The idea is that we will create a Dictionary matching every Term to
@@ -41,18 +42,55 @@ trait Backend<T: TriplesParser, E: From<<T>::Error>> {
             return Err(ParserError::Dictionary(err));
         }
 
-        let mut graph = vec![Vec::new(); subjects.len()];
-        let dictionary = Dictionary::from_set_terms(subjects, predicates, objects);
+        let mut graph = vec![
+            Vec::new();
+            match reference_system {
+                ReferenceSystem::SPO | ReferenceSystem::SOP => subjects.len(),
+                ReferenceSystem::PSO | ReferenceSystem::POS => predicates.len(),
+                ReferenceSystem::OSP | ReferenceSystem::OPS => objects.len(),
+            }
+        ];
+        let dictionary =
+            Dictionary::from_set_terms(reference_system.to_owned(), subjects, predicates, objects);
 
         if let Err(err) = Self::parser_fn(path, &mut |triple: Triple| {
             {
                 let sidx = dictionary.get_subject_idx_unchecked(&triple.subject.to_string());
                 let pidx = dictionary.get_predicate_idx_unchecked(&triple.predicate.to_string());
                 let oidx = dictionary.get_object_idx_unchecked(&triple.object.to_string());
-                graph
-                    .get_mut(sidx)
-                    .unwrap()
-                    .push((pidx as u32, oidx as u32))
+
+                match reference_system {
+                    ReferenceSystem::SPO => {
+                        if let Some(subject) = graph.get_mut(sidx) {
+                            subject.push((pidx as u32, oidx as u32))
+                        }
+                    }
+                    ReferenceSystem::SOP => {
+                        if let Some(subject) = graph.get_mut(sidx) {
+                            subject.push((oidx as u32, pidx as u32))
+                        }
+                    }
+                    ReferenceSystem::PSO => {
+                        if let Some(predicate) = graph.get_mut(pidx) {
+                            predicate.push((sidx as u32, oidx as u32))
+                        }
+                    }
+                    ReferenceSystem::POS => {
+                        if let Some(predicate) = graph.get_mut(pidx) {
+                            predicate.push((oidx as u32, sidx as u32))
+                        }
+                    }
+                    ReferenceSystem::OPS => {
+                        if let Some(object) = graph.get_mut(oidx) {
+                            object.push((pidx as u32, sidx as u32))
+                        }
+                    }
+                    ReferenceSystem::OSP => {
+                        if let Some(object) = graph.get_mut(oidx) {
+                            object.push((sidx as u32, pidx as u32))
+                        }
+                    }
+                }
             };
             Ok(())
         } as Result<(), E>)
@@ -94,11 +132,11 @@ trait Backend<T: TriplesParser, E: From<<T>::Error>> {
 pub struct RdfParser;
 
 impl RdfParser {
-    pub fn parse(path: &str) -> RdfParserResult {
+    pub fn parse(path: &str, reference_system: &ReferenceSystem) -> RdfParserResult {
         match path.split('.').last() {
-            Some("nt") => NTriples::parse(path),
-            Some("ttl") => Turtle::parse(path),
-            Some("rdf") => RdfXml::parse(path),
+            Some("nt") => NTriples::parse(path, reference_system),
+            Some("ttl") => Turtle::parse(path, reference_system),
+            Some("rdf") => RdfXml::parse(path, reference_system),
             Some(format) => Err(ParserError::NotSupportedFormat(format.to_string())),
             None => Err(ParserError::NoFormatProvided),
         }

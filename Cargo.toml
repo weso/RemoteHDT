@@ -5,7 +5,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-zarrs = { version = "0.6.0", default-features = false, features = [ "http", "gzip", "sharding" ] }
+zarrs = { version = "0.12.4", default-features = false, features = [ "http", "gzip", "sharding", "async", "ndarray", "crc32c" ] }
 clap = { version = "4.1.8", features = ["derive"] }
 serde_json = "1.0.108"
 thiserror = "1.0.50"
@@ -14,11 +14,8 @@ sprs = "0.11.1"
 rio_turtle = "0.8.4"
 rio_xml = "0.8.4"
 rio_api = "0.8.4"
-safe-transmute = "0.11.2"
 rayon = "1.8.0"
-
-[target.'cfg(not(target_env = "msvc"))'.dependencies]
-jemallocator = "0.5.0"
+parking_lot = "0.12"
 
 [profile.release]
 codegen-units = 1

@@ -1,7 +1,6 @@
-use std::collections::HashSet;
-
 use fcsd::Set;
 use serde_json::Value;
+use std::collections::HashSet;
 use zarrs::array::Array;
 
 pub fn rdf_to_value(terms: Set) -> Value {
@@ -32,20 +31,20 @@ pub fn hash_to_set(terms: HashSet<String>) -> Vec<String> {
     vec
 }
 
-pub fn subjects_per_chunk<T>(arr: &Array<T>) -> u64 {
+pub fn rows_per_shard<T: ?Sized>(arr: &Array<T>) -> u64 {
     match arr.chunk_grid().chunk_shape(&[0, 0], arr.shape()) {
         Ok(shape) => match shape {
-            Some(chunk_shape) => chunk_shape[0],
+            Some(chunk_shape) => chunk_shape[0].into(),
             None => todo!(),
         },
         Err(_) => todo!(),
     }
 }
 
-pub fn objects_per_chunk<T>(arr: &Array<T>) -> u64 {
+pub fn columns_per_shard<T: ?Sized>(arr: &Array<T>) -> u64 {
     match arr.chunk_grid().chunk_shape(&[0, 0], arr.shape()) {
         Ok(shape) => match shape {
-            Some(chunk_shape) => chunk_shape[1],
+            Some(chunk_shape) => chunk_shape[1].into(),
             None => todo!(),
         },
         Err(_) => todo!(),

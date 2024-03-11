@@ -1,59 +1,168 @@
-use remote_hdt::{
-    engine::EngineStrategy,
-    storage::{matrix::MatrixLayout, tabular::TabularLayout, ChunkingStrategy, LocalStorage},
-};
+use common::set_expected_first_term_matrix;
+use remote_hdt::storage::layout::matrix::MatrixLayout;
+use remote_hdt::storage::layout::tabular::TabularLayout;
+use remote_hdt::storage::ops::Ops;
+use remote_hdt::storage::ops::OpsFormat;
+use remote_hdt::storage::params::Backend;
+use remote_hdt::storage::params::ChunkingStrategy;
+use remote_hdt::storage::params::ReferenceSystem;
+use remote_hdt::storage::params::Serialization;
+use remote_hdt::storage::Storage;
 use sprs::TriMat;
+use std::error::Error;
+
 mod common;
 
 #[test]
-fn get_subject_matrix_chunk_test() {
-    let mut storage = LocalStorage::new(MatrixLayout);
-    common::setup(common::MATRIX_ZARR, &mut storage, ChunkingStrategy::Chunk);
+fn get_subject_matrix_chunk_test() -> Result<(), Box<dyn Error>> {
+    let mut storage = Storage::new(MatrixLayout, Serialization::Zarr);
 
-    let actual = storage
-        .load(common::MATRIX_ZARR)
-        .unwrap()
-        .get_subject(common::Subject::Alan.get_idx(&storage.get_dictionary()))
-        .unwrap();
+    common::setup(
+        common::MATRIX_ZARR,
+        &mut storage,
+        ChunkingStrategy::Chunk,
+        ReferenceSystem::SPO,
+    );
 
-    assert_eq!(actual, vec![2, 4, 5, 0, 0, 0, 0, 7, 8])
+    let actual = match storage
+        .load(Backend::FileSystem(common::MATRIX_ZARR))?
+        .get_subject(common::Subject::Alan.into())?
+    {
+        OpsFormat::Zarr(actual) => actual,
+        _ => unreachable!(),
+    };
+
+    let mut expected = vec![0u32; storage.get_dictionary().objects_size()];
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::InstanceOf,
+        common::Object::Human,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::PlaceOfBirth,
+        common::Object::Warrington,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::PlaceOfDeath,
+        common::Object::Wilmslow,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::DateOfBirth,
+        common::Object::Date,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+    set_expected_first_term_matrix(
+        &mut expected,
+        common::Subject::Alan,
+        common::Predicate::Employer,
+        common::Object::GCHQ,
+        &storage.get_dictionary(),
+        ReferenceSystem::SPO,
+    );
+
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(String::from("Expected and actual results are not equals").into())
+    }
 }
 
 #[test]
-fn get_subject_matrix_sharding_test() {
-    let mut storage = LocalStorage::new(MatrixLayout);
+fn get_subject_matrix_sharding_test() -> Result<(), Box<dyn Error>> {
+    let mut storage = Storage::new(MatrixLayout, Serialization::Zarr);
+
     common::setup(
         common::SHARDING_ZARR,
         &mut storage,
-        ChunkingStrategy::Sharding(3),
+        ChunkingStrategy::Sharding(4),
+        ReferenceSystem::SPO,
     );
 
-    let actual = storage
-        .load(common::SHARDING_ZARR)
-        .unwrap()
-        .get_subject(3)
-        .unwrap();
+    let actual = match storage
+        .load(Backend::FileSystem(common::SHARDING_ZARR))?
+        .get_subject(common::Subject::Wilmslow.into())?
+    {
+        OpsFormat::Zarr(actual) => actual,
+        _ => unreachable!(),
+    };
 
-    assert_eq!(actual, vec![0, 0, 0, 0, 0, 5, 1, 0, 0])
+    let mut expected = vec![0u32; storage.get_dictionary().objects_size()];
+    expected[5] = common::Predicate::InstanceOf.get_idx(&storage.get_dictionary()) as u32;
+    expected[6] = common::Predicate::Country.get_idx(&storage.get_dictionary()) as u32;
+
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(String::from("Expected and actual results are not equals").into())
+    }
 }
 
 #[test]
-fn get_subject_tabular_test() {
-    let mut storage = LocalStorage::new(TabularLayout);
-    common::setup(common::TABULAR_ZARR, &mut storage, ChunkingStrategy::Chunk);
+fn get_subject_tabular_test() -> Result<(), Box<dyn Error>> {
+    let mut storage = Storage::new(TabularLayout, Serialization::Sparse);
 
-    let actual = storage
-        .load_sparse(common::TABULAR_ZARR)
-        .unwrap()
-        .get_subject(common::Subject::Alan.get_idx(&storage.get_dictionary()))
-        .unwrap();
+    common::setup(
+        common::TABULAR_ZARR,
+        &mut storage,
+        ChunkingStrategy::Chunk,
+        ReferenceSystem::SPO,
+    );
 
-    let mut result = TriMat::new((4, 9));
-    result.add_triplet(0, 0, 2);
-    result.add_triplet(0, 1, 4);
-    result.add_triplet(0, 2, 5);
-    result.add_triplet(0, 7, 7);
-    result.add_triplet(0, 8, 8);
-    let result = result.to_csc();
-    assert_eq!(actual, result)
+    let actual = match storage
+        .load(Backend::FileSystem(common::TABULAR_ZARR))?
+        .get_subject(common::Subject::Alan.into())?
+    {
+        OpsFormat::SparseArray(actual) => actual,
+        _ => unreachable!(),
+    };
+
+    let mut expected = TriMat::new((
+        storage.get_dictionary().subjects_size(),
+        storage.get_dictionary().objects_size(),
+    ));
+    expected.add_triplet(
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Object::Human.get_idx(&storage.get_dictionary()),
+        common::Predicate::InstanceOf.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Object::Warrington.get_idx(&storage.get_dictionary()),
+        common::Predicate::PlaceOfBirth.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Object::Wilmslow.get_idx(&storage.get_dictionary()),
+        common::Predicate::PlaceOfDeath.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Object::Date.get_idx(&storage.get_dictionary()),
+        common::Predicate::DateOfBirth.get_idx(&storage.get_dictionary()),
+    );
+    expected.add_triplet(
+        common::Subject::Alan.get_idx(&storage.get_dictionary()),
+        common::Object::GCHQ.get_idx(&storage.get_dictionary()),
+        common::Predicate::Employer.get_idx(&storage.get_dictionary()),
+    );
+
+    if actual == expected.to_csc() {
+        Ok(())
+    } else {
+        Err(String::from("Expected and actual results are not equals").into())
+    }
 }
