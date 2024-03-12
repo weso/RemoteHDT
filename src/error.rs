@@ -58,6 +58,8 @@ pub enum RemoteHDTError {
     ReadOnlyBackend,
     #[error("Error while parsing the RDF graph")]
     RdfParse,
+    #[error("Error while parsing the CSV metadata")]
+    CSVParse,
     #[error(transparent)]
     NonZero(#[from] NonZeroError),
 }

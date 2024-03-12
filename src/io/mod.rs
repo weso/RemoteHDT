@@ -3,6 +3,8 @@ use rio_api::parser::TriplesParser;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufReader;
+use std::error::Error;
+use csv::ReaderBuilder;
 
 use crate::dictionary::Dictionary;
 use crate::error::ParserError;
@@ -130,6 +132,7 @@ trait Backend<T: TriplesParser, E: From<<T>::Error>> {
 }
 
 pub struct RdfParser;
+pub struct CSVParser;
 
 impl RdfParser {
     pub fn parse(path: &str, reference_system: &ReferenceSystem) -> RdfParserResult {
@@ -140,5 +143,25 @@ impl RdfParser {
             Some(format) => Err(ParserError::NotSupportedFormat(format.to_string())),
             None => Err(ParserError::NoFormatProvided),
         }
+    }
+}
+
+impl CSVParser {
+    pub fn parse(filename: &str) -> Result<Vec<Vec<u32>>, Box<dyn Error>> {
+        let file = File::open(filename)?;
+        let mut reader = ReaderBuilder::new()
+            .has_headers(true)
+            .from_reader(file);
+    
+        let mut records: Vec<Vec<u32>> = Vec::new();
+    
+        for result in reader.records() {
+            let record = result?;
+            let values: Vec<u32> = record.iter().map(|s| s.parse::<u32>().unwrap()).collect();
+            
+            records.push(values);
+        }
+    
+        Ok(records)
     }
 }

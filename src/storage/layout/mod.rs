@@ -28,7 +28,6 @@ type ArrayToBytesCodec = Box<dyn ArrayToBytesCodecTraits>;
 
 pub mod matrix;
 pub mod tabular;
-pub mod metadata;
 
 pub trait LayoutOps<C> {
     fn retrieve_attributes(&mut self, arr: &Array<OpendalStore>) -> StorageResult<Dictionary> {
