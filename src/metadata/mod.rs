@@ -130,4 +130,51 @@ impl<C> Metadata<C> {
 
         Ok(self)
     }
+
+    pub fn load<'a>(
+        &mut self,
+        store: Backend<'a>,
+        // threading_strategy: ThreadingStrategy, TODO: implement this
+    ) -> MetadataResult<&mut Self> {
+        let operator = match store {
+            Backend::FileSystem(path) => {
+                let mut builder = Fs::default();
+                let path = PathBuf::from_str(path)?;
+
+                match path.exists() {
+                    false => return Err(RemoteHDTError::PathDoesNotExist),
+                    true => {
+                        let path = match path.into_os_string().into_string() {
+                            Ok(string) => string,
+                            Err(_) => return Err(RemoteHDTError::OsPathToString),
+                        };
+                        builder.root(&path);
+                    }
+                }
+
+                Operator::new(builder)?.finish()
+            }
+            Backend::HTTP(path) => {
+                let mut builder = Http::default();
+                builder.endpoint(path);
+                Operator::new(builder)?.finish()
+            }
+        };
+
+        let store: Arc<OpendalStore> = Arc::new(OpendalStore::new(operator.blocking()));
+        let arr = Array::new(store, ARRAY_NAME)?;
+        let dictionary = self.structure.retrieve_attributes(&arr)?;
+        self.dictionary = dictionary;
+        self.reference_system = self.dictionary.get_reference_system();
+        self.dimensionality = Dimensionality::new(&self.dictionary, &Graph::default());
+
+        match self.serialization {
+            Serialization::Zarr => self.array = Some(arr),
+            Serialization::Sparse => {
+                self.sparse_array = Some(self.layout.parse(&arr, &self.dimensionality)?)
+            }
+        }
+
+        Ok(self)
+    }
 }
