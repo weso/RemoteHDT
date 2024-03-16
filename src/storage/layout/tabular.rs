@@ -32,7 +32,7 @@ impl Layout<Chunk> for TabularLayout {
         DataType::UInt32
     }
 
-    fn chunk_shape(&self, chunking_strategy: ChunkingStrategy, _: &Dimensionality) -> ChunkGrid {
+    fn chunk_shape(&self, chunking_strategy: &ChunkingStrategy, _: &Dimensionality) -> ChunkGrid {
         vec![chunking_strategy.into(), NonZeroU64::new(3).unwrap()].into() // TODO: make this a constant value
     }
 

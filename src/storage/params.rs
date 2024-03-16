@@ -34,19 +34,24 @@ pub enum ReferenceSystem {
     OPS,
 }
 
+pub enum Optimization {
+    Query,
+    Storage(ReferenceSystem),
+}
+
 #[derive(Default)]
 pub struct Dimensionality {
     graph_size: Option<usize>,
     pub(crate) first_term_size: usize,
-    _second_term_size: usize,
+    // second_term_size: usize,
     pub(crate) third_term_size: usize,
 }
 
-impl From<ChunkingStrategy> for NonZeroU64 {
-    fn from(value: ChunkingStrategy) -> Self {
+impl From<&ChunkingStrategy> for NonZeroU64 {
+    fn from(value: &ChunkingStrategy) -> Self {
         match value {
             ChunkingStrategy::Chunk => NonZeroU64::new(1).unwrap(),
-            ChunkingStrategy::Sharding(size) => NonZeroU64::new(size).unwrap(),
+            ChunkingStrategy::Sharding(size) => NonZeroU64::new(*size).unwrap(),
             ChunkingStrategy::Best => NonZeroU64::new(16).unwrap(), // TODO: set to the number of threads
         }
     }
@@ -79,24 +84,46 @@ impl From<&str> for ReferenceSystem {
     }
 }
 
+impl AsRef<str> for Optimization {
+    fn as_ref(&self) -> &str {
+        match self {
+            Optimization::Query => "query",
+            Optimization::Storage(reference_system) => reference_system.as_ref(),
+        }
+    }
+}
+
+impl From<&str> for Optimization {
+    fn from(value: &str) -> Self {
+        match value {
+            "query" => Optimization::Query,
+            _ => Optimization::Storage(value.into()),
+        }
+    }
+}
+
 impl Dimensionality {
-    pub(crate) fn new(dictionary: &Dictionary, graph: &Graph) -> Self {
+    pub(crate) fn new(
+        dictionary: &Dictionary,
+        graph: &Graph,
+        reference_system: &ReferenceSystem,
+    ) -> Self {
         Dimensionality {
             graph_size: graph
                 .iter()
                 .map(|triples| triples.len())
                 .reduce(|acc, a| acc + a),
-            first_term_size: match dictionary.get_reference_system() {
+            first_term_size: match reference_system {
                 ReferenceSystem::SPO | ReferenceSystem::SOP => dictionary.subjects_size(),
                 ReferenceSystem::POS | ReferenceSystem::PSO => dictionary.predicates_size(),
                 ReferenceSystem::OPS | ReferenceSystem::OSP => dictionary.objects_size(),
             },
-            _second_term_size: match dictionary.get_reference_system() {
-                ReferenceSystem::PSO | ReferenceSystem::OSP => dictionary.subjects_size(),
-                ReferenceSystem::SPO | ReferenceSystem::OPS => dictionary.predicates_size(),
-                ReferenceSystem::SOP | ReferenceSystem::POS => dictionary.objects_size(),
-            },
-            third_term_size: match dictionary.get_reference_system() {
+            // second_term_size: match dictionary.get_reference_system() {
+            //     ReferenceSystem::PSO | ReferenceSystem::OSP => dictionary.subjects_size(),
+            //     ReferenceSystem::SPO | ReferenceSystem::OPS => dictionary.predicates_size(),
+            //     ReferenceSystem::SOP | ReferenceSystem::POS => dictionary.objects_size(),
+            // },
+            third_term_size: match reference_system {
                 ReferenceSystem::POS | ReferenceSystem::OPS => dictionary.subjects_size(),
                 ReferenceSystem::SOP | ReferenceSystem::OSP => dictionary.predicates_size(),
                 ReferenceSystem::SPO | ReferenceSystem::PSO => dictionary.objects_size(),

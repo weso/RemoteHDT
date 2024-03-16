@@ -1,6 +1,6 @@
 use remote_hdt::error::RemoteHDTError;
 use remote_hdt::storage::layout::matrix::MatrixLayout;
-use remote_hdt::storage::params::{Backend, ChunkingStrategy, ReferenceSystem, Serialization};
+use remote_hdt::storage::params::*;
 use remote_hdt::storage::Storage;
 use std::env;
 use std::time::Instant;
@@ -21,7 +21,7 @@ fn main() -> Result<(), RemoteHDTError> {
         Backend::FileSystem(zarr_path),
         rdf_path,
         ChunkingStrategy::Sharding(*shard_size),
-        ReferenceSystem::SPO,
+        Optimization::Query,
     )?;
 
     println!("Elapsed time: {:.2?}", before.elapsed());

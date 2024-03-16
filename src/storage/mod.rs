@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 use zarrs::array::Array;
 use zarrs::array::ArrayBuilder;
-use zarrs::array_subset::ArraySubset;
+use zarrs::group::Group;
 use zarrs::group::GroupBuilder;
 use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::store::HTTPStore;
@@ -22,6 +22,7 @@ use self::layout::Layout;
 use self::params::Backend;
 use self::params::ChunkingStrategy;
 use self::params::Dimensionality;
+use self::params::Optimization;
 use self::params::ReferenceSystem;
 use self::params::Serialization;
 
@@ -33,9 +34,8 @@ pub type ZarrArray = CsMat<usize>;
 type AtomicZarrType = AtomicU32;
 pub type StorageResult<T> = Result<T, RemoteHDTError>;
 
-const ARRAY_NAME: &str = "/group/RemoteHDT"; // TODO: parameterize this
-
 pub struct Storage<C> {
+    // TODO: think about which of the fields are actually required
     dictionary: Dictionary,
     dimensionality: Dimensionality,
     layout: Box<dyn Layout<C>>,
@@ -75,7 +75,7 @@ impl<C> Storage<C> {
         store: Backend<'a>,
         rdf_path: &'a str,
         chunking_strategy: ChunkingStrategy,
-        reference_system: ReferenceSystem,
+        optimization: Optimization,
         // threading_strategy: ThreadingStrategy, TODO: implement this
     ) -> StorageResult<&mut Self> {
         let path = match store {
@@ -94,7 +94,14 @@ impl<C> Storage<C> {
         let store = Arc::new(FilesystemStore::new(path)?);
 
         // Create a group and write metadata to filesystem
-        let group = GroupBuilder::new().build(store.clone(), "/group")?;
+        let group = GroupBuilder::new()
+            .attributes({
+                let mut attributes = Map::new();
+                attributes.insert("optimization".into(), optimization.as_ref().into());
+                // TODO: move the subjects, predicates and objects to here
+                attributes
+            })
+            .build(store.clone(), "/group")?;
         group.store_metadata()?;
 
         // TODO: rayon::ThreadPoolBuilder::new()
@@ -102,22 +109,52 @@ impl<C> Storage<C> {
         //     .build_global()
         //     .unwrap();
 
-        // 3. Import the RDF dump using `rdf-rs`
+        match optimization {
+            Optimization::Query => {
+                for reference_system in [
+                    ReferenceSystem::SPO,
+                    ReferenceSystem::PSO,
+                    ReferenceSystem::OPS,
+                ] {
+                    self.serialize_array(&store, rdf_path, reference_system, &chunking_strategy)?
+                }
+            }
+            Optimization::Storage(ref reference_system) => self.serialize_array(
+                &store,
+                rdf_path,
+                reference_system.to_owned(),
+                &chunking_strategy,
+            )?,
+        }
+
+        Ok(self)
+    }
+
+    fn serialize_array<'a>(
+        &mut self,
+        store: &Arc<FilesystemStore>,
+        rdf_path: &'a str,
+        reference_system: ReferenceSystem,
+        chunking_strategy: &ChunkingStrategy,
+    ) -> StorageResult<()> {
+        // Import the RDF dump using `rdf-rs`
         let graph = match RdfParser::parse(rdf_path, &reference_system) {
             Ok((graph, dictionary)) => {
                 self.dictionary = dictionary;
-                self.dimensionality = Dimensionality::new(&self.dictionary, &graph);
+                self.dimensionality =
+                    Dimensionality::new(&self.dictionary, &graph, &reference_system);
                 graph
             }
             Err(_) => return Err(RemoteHDTError::RdfParse),
         };
 
-        // 4. Build the structure of the Array; as such, several parameters of it are
-        // tweaked. Namely, the size of the array, the size of the chunks, the name
-        // of the different dimensions and the default values
         let subjects = self.dictionary.subjects();
         let predicates = self.dictionary.predicates();
         let objects = self.dictionary.objects();
+
+        // Build the structure of the Array; as such, several parameters of it are
+        // tweaked. Namely, the size of the array, the size of the chunks, the name
+        // of the different dimensions and the default values
         let arr = ArrayBuilder::new(
             self.layout.shape(&self.dimensionality),
             self.layout.data_type(),
@@ -135,15 +172,15 @@ impl<C> Storage<C> {
             attributes.insert("reference_system".into(), reference_system.as_ref().into());
             attributes
         })
-        .build(store.clone(), ARRAY_NAME)?;
+        .build(
+            store.clone(),
+            &format!("/group/{}", reference_system.as_ref()),
+        )?;
 
         arr.store_metadata()?;
         self.layout.serialize(&arr, graph)?;
 
-        let shape = ArraySubset::new_with_ranges(&[0..10, 1..2]);
-        arr.retrieve_array_subset_elements::<u32>(&shape).unwrap();
-
-        Ok(self)
+        Ok(())
     }
 
     pub fn load(
@@ -163,11 +200,23 @@ impl<C> Storage<C> {
             Backend::HTTP(url) => Arc::new(HTTPStore::new(url)?),
         };
 
-        let arr = Array::new(store, ARRAY_NAME)?;
-        let dictionary = self.layout.retrieve_attributes(&arr)?;
-        self.dictionary = dictionary;
-        self.reference_system = self.dictionary.get_reference_system();
-        self.dimensionality = Dimensionality::new(&self.dictionary, &Graph::default());
+        let group = Group::new(store.to_owned(), "/group")?;
+        let optimization = self.layout.retrieve_group_attributes(&group)?;
+
+        match optimization {
+            Optimization::Query => todo!(),
+            Optimization::Storage(reference_system) => {
+                let arr = Array::new(store, &format!("/group/{}", reference_system.as_ref()))?;
+                let dictionary = self.layout.retrieve_attributes(&arr)?;
+                self.dictionary = dictionary;
+                self.reference_system = reference_system;
+                self.dimensionality = Dimensionality::new(
+                    &self.dictionary,
+                    &Graph::default(),
+                    &self.reference_system,
+                );
+            }
+        }
 
         match self.serialization {
             Serialization::Zarr => self.array = Some(arr),

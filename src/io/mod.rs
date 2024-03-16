@@ -50,14 +50,16 @@ trait Backend<T: TriplesParser, E: From<<T>::Error>> {
                 ReferenceSystem::OSP | ReferenceSystem::OPS => objects.len(),
             }
         ];
-        let dictionary =
-            Dictionary::from_set_terms(reference_system.to_owned(), subjects, predicates, objects);
+        let dictionary = Dictionary::from_set_terms(subjects, predicates, objects);
 
         if let Err(err) = Self::parser_fn(path, &mut |triple: Triple| {
             {
-                let sidx = dictionary.get_subject_idx_unchecked(&triple.subject.to_string());
-                let pidx = dictionary.get_predicate_idx_unchecked(&triple.predicate.to_string());
-                let oidx = dictionary.get_object_idx_unchecked(&triple.object.to_string());
+                let sidx = dictionary
+                    .get_subject_idx_unchecked(&triple.subject.to_string(), reference_system);
+                let pidx = dictionary
+                    .get_predicate_idx_unchecked(&triple.predicate.to_string(), reference_system);
+                let oidx = dictionary
+                    .get_object_idx_unchecked(&triple.object.to_string(), reference_system);
 
                 match reference_system {
                     ReferenceSystem::SPO => {

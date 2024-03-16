@@ -7,7 +7,6 @@ use super::utils::hash_to_set;
 
 #[derive(Clone)]
 pub struct Dictionary {
-    reference_system: ReferenceSystem,
     subjects: Set,
     predicates: Set,
     objects: Set,
@@ -16,7 +15,6 @@ pub struct Dictionary {
 impl Default for Dictionary {
     fn default() -> Self {
         Dictionary {
-            reference_system: ReferenceSystem::SPO,
             subjects: Set::new(vec!["PlaceHolder"]).unwrap(),
             predicates: Set::new(vec!["PlaceHolder"]).unwrap(),
             objects: Set::new(vec!["PlaceHolder"]).unwrap(),
@@ -26,13 +24,11 @@ impl Default for Dictionary {
 
 impl Dictionary {
     pub(crate) fn from_vec_str(
-        reference_system: ReferenceSystem,
         subjects: &Vec<String>,
         predicates: &Vec<String>,
         objects: &Vec<String>,
     ) -> Self {
         Dictionary {
-            reference_system,
             subjects: Set::new(subjects).unwrap(),
             predicates: Set::new(predicates).unwrap(),
             objects: Set::new(objects).unwrap(),
@@ -40,13 +36,11 @@ impl Dictionary {
     }
 
     pub(crate) fn from_set_terms(
-        reference_system: ReferenceSystem,
         subjects: HashSet<String>,
         predicates: HashSet<String>,
         objects: HashSet<String>,
     ) -> Self {
         Dictionary {
-            reference_system,
             subjects: Set::new(hash_to_set(subjects)).unwrap(),
             predicates: Set::new(hash_to_set(predicates)).unwrap(),
             objects: Set::new(hash_to_set(objects)).unwrap(),
@@ -77,13 +71,13 @@ impl Dictionary {
         self.objects.to_owned()
     }
 
-    pub fn get_reference_system(&self) -> ReferenceSystem {
-        self.reference_system.to_owned()
-    }
-
-    pub fn get_subject_idx(&self, subject: &str) -> Option<usize> {
+    pub fn get_subject_idx(
+        &self,
+        subject: &str,
+        reference_system: &ReferenceSystem,
+    ) -> Option<usize> {
         let mut locator = self.subjects.locator();
-        match self.reference_system {
+        match reference_system {
             ReferenceSystem::PSO | ReferenceSystem::OSP => {
                 locator.run(subject).map(|value| value + 1)
             }
@@ -91,13 +85,21 @@ impl Dictionary {
         }
     }
 
-    pub fn get_subject_idx_unchecked(&self, subject: &str) -> usize {
-        self.get_subject_idx(subject).unwrap()
+    pub fn get_subject_idx_unchecked(
+        &self,
+        subject: &str,
+        reference_system: &ReferenceSystem,
+    ) -> usize {
+        self.get_subject_idx(subject, reference_system).unwrap()
     }
 
-    pub fn get_predicate_idx(&self, predicate: &str) -> Option<usize> {
+    pub fn get_predicate_idx(
+        &self,
+        predicate: &str,
+        reference_system: &ReferenceSystem,
+    ) -> Option<usize> {
         let mut locator = self.predicates.locator();
-        match self.reference_system {
+        match reference_system {
             ReferenceSystem::SPO | ReferenceSystem::OPS => {
                 locator.run(predicate).map(|value| value + 1)
             }
@@ -105,13 +107,21 @@ impl Dictionary {
         }
     }
 
-    pub fn get_predicate_idx_unchecked(&self, predicate: &str) -> usize {
-        self.get_predicate_idx(predicate).unwrap()
+    pub fn get_predicate_idx_unchecked(
+        &self,
+        predicate: &str,
+        reference_system: &ReferenceSystem,
+    ) -> usize {
+        self.get_predicate_idx(predicate, reference_system).unwrap()
     }
 
-    pub fn get_object_idx(&self, object: &str) -> Option<usize> {
+    pub fn get_object_idx(
+        &self,
+        object: &str,
+        reference_system: &ReferenceSystem,
+    ) -> Option<usize> {
         let mut locator = self.objects.locator();
-        match self.reference_system {
+        match reference_system {
             ReferenceSystem::SOP | ReferenceSystem::POS => {
                 locator.run(object).map(|value| value + 1)
             }
@@ -119,7 +129,11 @@ impl Dictionary {
         }
     }
 
-    pub fn get_object_idx_unchecked(&self, object: &str) -> usize {
-        self.get_object_idx(object).unwrap()
+    pub fn get_object_idx_unchecked(
+        &self,
+        object: &str,
+        reference_system: &ReferenceSystem,
+    ) -> usize {
+        self.get_object_idx(object, reference_system).unwrap()
     }
 }

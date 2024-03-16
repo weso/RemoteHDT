@@ -48,6 +48,8 @@ pub enum RemoteHDTError {
     ObjectsNotInJSON,
     #[error("The Reference System has not been serialized properly")]
     ReferenceSystemNotInJSON,
+    #[error("The Optimization has not been serialized properly")]
+    OptimizationNotInJSON,
     #[error("Error serializing the triples of the Graph")]
     TripleSerialization,
     #[error("The provided path is not valid")]

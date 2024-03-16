@@ -38,7 +38,7 @@ impl Layout<Chunk> for MatrixLayout {
 
     fn chunk_shape(
         &self,
-        chunking_strategy: ChunkingStrategy,
+        chunking_strategy: &ChunkingStrategy,
         dimensionality: &Dimensionality,
     ) -> ChunkGrid {
         vec![

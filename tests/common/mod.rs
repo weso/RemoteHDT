@@ -3,7 +3,7 @@
 use remote_hdt::dictionary::Dictionary;
 use remote_hdt::storage::params::Backend;
 use remote_hdt::storage::params::ChunkingStrategy;
-use remote_hdt::storage::params::ReferenceSystem;
+use remote_hdt::storage::params::Optimization;
 use remote_hdt::storage::Storage;
 use sprs::CsMat;
 use sprs::TriMat;
@@ -22,7 +22,7 @@ pub fn setup<C>(
     path: &str,
     storage: &mut Storage<C>,
     chunking_strategy: ChunkingStrategy,
-    reference_system: ReferenceSystem,
+    optimization: Optimization,
 ) {
     if File::open(path).is_err() {
         storage
@@ -30,7 +30,7 @@ pub fn setup<C>(
                 Backend::FileSystem(path),
                 "resources/rdf.nt",
                 chunking_strategy,
-                reference_system,
+                optimization,
             )
             .unwrap();
     } else {

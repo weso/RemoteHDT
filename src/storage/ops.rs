@@ -21,7 +21,10 @@ pub trait Ops {
 
 impl<C> Ops for Storage<C> {
     fn get_subject(&self, subject: &str) -> OpsResult {
-        let index = match self.dictionary.get_subject_idx(subject) {
+        let index = match self
+            .dictionary
+            .get_subject_idx(subject, &self.reference_system)
+        {
             Some(index) => index,
             None => return Err(OpsError::SubjectNotFound),
         };
@@ -51,7 +54,10 @@ impl<C> Ops for Storage<C> {
     }
 
     fn get_predicate(&self, predicate: &str) -> OpsResult {
-        let index = match self.dictionary.get_predicate_idx(predicate) {
+        let index = match self
+            .dictionary
+            .get_predicate_idx(predicate, &self.reference_system)
+        {
             Some(index) => index,
             None => return Err(OpsError::PredicateNotFound),
         };
@@ -79,7 +85,10 @@ impl<C> Ops for Storage<C> {
     }
 
     fn get_object(&self, object: &str) -> OpsResult {
-        let index = match self.dictionary.get_object_idx(object) {
+        let index = match self
+            .dictionary
+            .get_object_idx(object, &self.reference_system)
+        {
             Some(index) => index,
             None => return Err(OpsError::ObjectNotFound),
         };

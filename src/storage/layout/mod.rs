@@ -9,6 +9,7 @@ use zarrs::array::DataType;
 use zarrs::array::DimensionName;
 use zarrs::array::FillValue;
 use zarrs::array_subset::ArraySubset;
+use zarrs::group::Group;
 use zarrs::storage::store::FilesystemStore;
 use zarrs::storage::ReadableStorageTraits;
 
@@ -19,6 +20,7 @@ use crate::utils::columns_per_shard;
 use crate::utils::rows_per_shard;
 use crate::utils::value_to_term;
 
+use super::params::Optimization;
 use super::ChunkingStrategy;
 use super::Dimensionality;
 use super::ReferenceSystem;
@@ -31,6 +33,24 @@ pub mod matrix;
 pub mod tabular;
 
 pub trait LayoutOps<C> {
+    fn retrieve_group_attributes(
+        &mut self,
+        group: &Group<dyn ReadableStorageTraits>,
+    ) -> StorageResult<Optimization> {
+        // 4. We get the attributes so we can obtain some values that we will need
+        let attributes = group.attributes();
+
+        let optimization: Optimization = match attributes.get("optimization") {
+            Some(reference_system) => reference_system,
+            None => return Err(RemoteHDTError::OptimizationNotInJSON),
+        }
+        .as_str()
+        .unwrap()
+        .into();
+
+        Ok(optimization)
+    }
+
     fn retrieve_attributes(
         &mut self,
         arr: &Array<dyn ReadableStorageTraits>,
@@ -51,20 +71,7 @@ pub trait LayoutOps<C> {
             None => return Err(RemoteHDTError::ObjectsNotInJSON),
         });
 
-        let reference_system: ReferenceSystem = match attributes.get("reference_system") {
-            Some(reference_system) => reference_system,
-            None => return Err(RemoteHDTError::ReferenceSystemNotInJSON),
-        }
-        .as_str()
-        .unwrap()
-        .into();
-
-        Ok(Dictionary::from_vec_str(
-            reference_system,
-            subjects,
-            predicates,
-            objects,
-        ))
+        Ok(Dictionary::from_vec_str(subjects, predicates, objects))
     }
 
     fn serialize(&mut self, arr: &Array<FilesystemStore>, graph: Graph) -> StorageResult<()> {
@@ -172,7 +179,7 @@ pub trait Layout<C>: LayoutOps<C> {
     fn data_type(&self) -> DataType;
     fn chunk_shape(
         &self,
-        chunking_strategy: ChunkingStrategy,
+        chunking_strategy: &ChunkingStrategy,
         dimensionality: &Dimensionality,
     ) -> ChunkGrid;
     fn fill_value(&self) -> FillValue;
