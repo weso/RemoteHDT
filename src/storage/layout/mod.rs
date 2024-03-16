@@ -168,6 +168,7 @@ pub trait LayoutOps<C> {
 }
 
 pub trait Layout<C>: LayoutOps<C> {
+    fn name(&self) -> String;
     fn shape(&self, dimensionality: &Dimensionality) -> Vec<u64>;
     fn data_type(&self) -> DataType;
     fn chunk_shape(

@@ -93,6 +93,10 @@ impl Layout<Chunk> for MatrixLayout {
         sharding_codec_builder.bytes_to_bytes_codecs(vec![Box::new(GzipCodec::new(5)?)]);
         Ok(Box::new(sharding_codec_builder.build()))
     }
+
+    fn name(&self) -> String {
+        "MatrixLayout".to_owned()
+    }
 }
 
 impl LayoutOps<Chunk> for MatrixLayout {
