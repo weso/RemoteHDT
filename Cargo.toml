@@ -1,5 +1,5 @@
 [package]
-authors = [ "Ángel Iglesias Préstamo <angel.iglesias.prestamo@gmail.com>" ]
+authors = [ "Ángel Iglesias Préstamo <angel.iglesias.prestamo@gmail.com>" , "Diego Martín Fernández <diegomartinfnz@gmail.com>" ]
 name = "remote-hdt"
 version = "0.0.1"
 edition = "2021"
